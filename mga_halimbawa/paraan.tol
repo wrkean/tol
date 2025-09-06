@@ -1,0 +1,29 @@
+// Ang mga paraan ay isang bloke ng code na
+// maaaring tawagin sa ibang bahagi ng programa.
+// `par` (pinaikli sa "paraan") ang ginagamit upang mag deklara ng isang
+// paraan.
+par idagdag(a: i32, b: i32):
+    a + b;
+
+// Pwede rin na ang paraan ay magbalik sa tumawag ng
+// isang balyu gamit ang `ibalik`
+par idagdag_at_ibalik(a: i32, b: i32) -> i32:   // Ang `->` ay nagsisilbing senyales para sa kompayler na babalik ito ng `i32`
+    ibalik a + b;
+
+// Ibabalik din ng paraan ang mga expresyon sa huli ng bloke nito
+par idagdag_at_ibalik_din(a: i32, b: i32) -> i32:
+    a + b   // Ibinalik ito dahil ito ang expresyon sa huli ng bloke (ang expresyon ay resulta ng isang operasyon, wala itong `;` sa huli)
+
+// Sa paraan na `una` nagsisimula ang lahat ng programa sa Tol
+par una():
+    // Tinatawag ang mga paraan gamit ang kanilang pangalan at mga `(` at `)`
+    idagdag(2, 3);   // Tumawag sa paraan na `idagdag` na may mga argumento na `2` at `3`
+
+    // Ang mga naiiba ay mga bagay sa programa na maaaring mag silid ng mga balyu.
+    // Ito ay idineklara gamit ang `ang`. Sa karaniwan, ang mga naiiba ay HINDI naiiba.
+    ang resulta: i32 = idagdag_at_ibalik(2, 3);   // Tumawag sa paraan na `idagdag_at_ibalik` na may mga argumento na `2` at `3`, isinilid ang resulta nito sa `reuslta`
+    // resulta = 0;     // Ito ay bawal at nagsaasanhi ng isang "Error pang-kompayler"
+
+    // Kung gusto mo ibahin ang isang naiiba, gamitin ang `maiba` pagkatapos ng `ang`
+    ang maiba naiibang_resulta = idagdag_at_ibalik_din(5, 7);
+    naiibang_resulta = 0;   // Ito ay ayos lang
