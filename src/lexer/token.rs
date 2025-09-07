@@ -1,5 +1,6 @@
 use crate::lexer::token_kind::TokenKind;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     lexeme: String,
     kind: TokenKind,

@@ -292,3 +292,126 @@ impl<'a> Lexer<'a> {
         self.peek().is_none()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn lex(source: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(source, "test");
+        lexer.lex().clone()
+    }
+
+    #[test]
+    fn test_single_char_tokens() {
+        let tokens: Vec<TokenKind> = lex("( ) { } : ; + - * / % = > <")
+            .iter()
+            .map(|t| t.kind().clone())
+            .collect();
+
+        assert_eq!(tokens.len(), 14);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::LeftParen,
+                TokenKind::RightParen,
+                TokenKind::LeftBrace,
+                TokenKind::RightBrace,
+                TokenKind::Colon,
+                TokenKind::SemiColon,
+                TokenKind::Plus,
+                TokenKind::Minus,
+                TokenKind::Star,
+                TokenKind::Slash,
+                TokenKind::Percent,
+                TokenKind::Equal,
+                TokenKind::Greater,
+                TokenKind::Lesser,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_combined_tokens() {
+        let tokens: Vec<TokenKind> = lex("+= -= *= /= %= == != >= <= ->")
+            .iter()
+            .map(|t| t.kind().clone())
+            .collect();
+
+        assert_eq!(tokens.len(), 10);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::PlusEqual,
+                TokenKind::MinusEqual,
+                TokenKind::StarEqual,
+                TokenKind::SlashEqual,
+                TokenKind::PercentEqual,
+                TokenKind::EqualEqual,
+                TokenKind::BangEqual,
+                TokenKind::GreaterEqual,
+                TokenKind::LesserEqual,
+                TokenKind::ThinArrow,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_identifiers_and_keywords() {
+        let tokens: Vec<TokenKind> = lex("par ang maiba myVar _anotherVar var123")
+            .iter()
+            .map(|t| t.kind().clone())
+            .collect();
+
+        assert_eq!(tokens.len(), 6);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Par,
+                TokenKind::Ang,
+                TokenKind::Maiba,
+                TokenKind::Identifier,
+                TokenKind::Identifier,
+                TokenKind::Identifier,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_floats_and_ints() {
+        let tokens: Vec<TokenKind> = lex("123 456_789 3.14 0.001 1_000.000_1")
+            .iter()
+            .map(|t| t.kind().clone())
+            .collect();
+
+        assert_eq!(tokens.len(), 5);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::IntLit,
+                TokenKind::IntLit,
+                TokenKind::FloatLit,
+                TokenKind::FloatLit,
+                TokenKind::FloatLit,
+            ]
+        );
+
+        let lexemes: Vec<String> = lex("123 456_789 3.14 0.001 1_000.000_1")
+            .iter()
+            .map(|t| t.lexeme().to_string())
+            .collect();
+
+        assert_eq!(lexemes, vec!["123", "456789", "3.14", "0.001", "1000.0001"]);
+    }
+
+    #[test]
+    fn test_invalid_tokens() {
+        let tokens: Vec<TokenKind> = lex("! $ @ # ^ &")
+            .iter()
+            .map(|t| t.kind().clone())
+            .collect();
+
+        assert_eq!(tokens.len(), 0);
+        assert_eq!(tokens, vec![]);
+    }
+}
