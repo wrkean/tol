@@ -317,7 +317,7 @@ mod test {
             .map(|t| t.kind().clone())
             .collect();
 
-        assert_eq!(tokens.len(), 14);
+        assert_eq!(tokens.len(), 15);
         assert_eq!(
             tokens,
             vec![
@@ -335,6 +335,7 @@ mod test {
                 TokenKind::Equal,
                 TokenKind::Greater,
                 TokenKind::Lesser,
+                TokenKind::Eof,
             ]
         );
     }
@@ -346,7 +347,7 @@ mod test {
             .map(|t| t.kind().clone())
             .collect();
 
-        assert_eq!(tokens.len(), 10);
+        assert_eq!(tokens.len(), 11);
         assert_eq!(
             tokens,
             vec![
@@ -360,6 +361,7 @@ mod test {
                 TokenKind::GreaterEqual,
                 TokenKind::LesserEqual,
                 TokenKind::ThinArrow,
+                TokenKind::Eof,
             ]
         );
     }
@@ -371,7 +373,7 @@ mod test {
             .map(|t| t.kind().clone())
             .collect();
 
-        assert_eq!(tokens.len(), 6);
+        assert_eq!(tokens.len(), 7);
         assert_eq!(
             tokens,
             vec![
@@ -381,6 +383,7 @@ mod test {
                 TokenKind::Identifier,
                 TokenKind::Identifier,
                 TokenKind::Identifier,
+                TokenKind::Eof,
             ]
         );
     }
@@ -392,7 +395,7 @@ mod test {
             .map(|t| t.kind().clone())
             .collect();
 
-        assert_eq!(tokens.len(), 5);
+        assert_eq!(tokens.len(), 6);
         assert_eq!(
             tokens,
             vec![
@@ -401,6 +404,7 @@ mod test {
                 TokenKind::FloatLit,
                 TokenKind::FloatLit,
                 TokenKind::FloatLit,
+                TokenKind::Eof,
             ]
         );
 
@@ -409,7 +413,10 @@ mod test {
             .map(|t| t.lexeme().to_string())
             .collect();
 
-        assert_eq!(lexemes, vec!["123", "456789", "3.14", "0.001", "1000.0001"]);
+        assert_eq!(
+            lexemes,
+            vec!["123", "456789", "3.14", "0.001", "1000.0001", "Eof"]
+        );
     }
 
     #[test]
@@ -419,7 +426,7 @@ mod test {
             .map(|t| t.kind().clone())
             .collect();
 
-        assert_eq!(tokens.len(), 0);
-        assert_eq!(tokens, vec![]);
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens, vec![TokenKind::Eof]);
     }
 }

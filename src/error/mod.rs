@@ -35,10 +35,12 @@ impl CompilerError {
     }
 
     pub fn display(&self, source_path: &str) {
-        let canon_source_path = fs::canonicalize(source_path)
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
+        let canon_source_path = if let Ok(pathbuf) = fs::canonicalize(source_path) {
+            pathbuf.to_string_lossy().into_owned()
+        } else {
+            source_path.to_owned()
+        };
+
         eprintln!(
             "  [ {} || {} ]",
             source_path.bold(),
