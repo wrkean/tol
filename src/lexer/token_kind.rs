@@ -18,6 +18,7 @@ pub enum TokenKind {
     LeftParen,
     RightParen,
     Colon,
+    Comma,
     SemiColon,
     ThinArrow,
     Plus,

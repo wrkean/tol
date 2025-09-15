@@ -1,7 +1,11 @@
-use std::{env, fs, process};
+use std::{char::ParseCharError, env, fs, process};
+
+use crate::{lexer::Lexer, parser::Parser};
 
 mod error;
 mod lexer;
+mod parser;
+mod tol;
 
 // All variables are in English. The reason being
 // is to make the code understandable to a wider audience.
@@ -18,4 +22,13 @@ fn main() {
         eprintln!("Nabigong basahin ang {path_to_source}: {e}");
         process::exit(1);
     });
+
+    let mut lexer = Lexer::new(&source, path_to_source);
+    let tokens = lexer.lex();
+    for tok in tokens {
+        println!("{}", tok.lexeme());
+    }
+
+    let mut parser = Parser::new(tokens, path_to_source);
+    let ast = parser.parse();
 }

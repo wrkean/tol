@@ -1,7 +1,7 @@
 use std::{collections::HashMap, iter::Peekable, str::Chars};
 
 use crate::{
-    error::CompilerError,
+    error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
 };
 
@@ -48,8 +48,12 @@ impl<'a> Lexer<'a> {
             self.start_column = self.column;
 
             if let Err(e) = self.next_token() {
-                e.display();
+                e.display(self.source_path);
             }
+        }
+
+        if !matches!(self.tokens.last().map(|t| t.kind()), Some(TokenKind::Eof)) {
+            self.add_token(TokenKind::Eof, Some("Eof"));
         }
 
         &self.tokens
@@ -59,7 +63,7 @@ impl<'a> Lexer<'a> {
         let ch = match self.advance() {
             Some(c) => c,
             None => {
-                self.add_token(TokenKind::Eof, None);
+                self.add_token(TokenKind::Eof, Some("EOF"));
                 return Ok(());
             }
         };
@@ -71,6 +75,7 @@ impl<'a> Lexer<'a> {
             '}' => self.add_token(TokenKind::RightBrace, None),
             ':' => self.add_token(TokenKind::Colon, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
+            ',' => self.add_token(TokenKind::Comma, None),
             '+' => {
                 if self.match_char('=') {
                     self.add_token(TokenKind::PlusEqual, None);
@@ -120,11 +125,12 @@ impl<'a> Lexer<'a> {
                     self.add_token(TokenKind::BangEqual, None);
                 } else {
                     return Err(CompilerError::new(
-                        "Hindi suportadong token '!' (gamitin ang 'di' keyword)",
+                        "Hindi suportadong token '!'",
+                        ErrorKind::Error,
                         self.line,
                         self.start_column,
-                        self.source_path,
-                    ));
+                    )
+                    .with_help("Palitan mo ito ng `di`"));
                 }
             }
             '>' => {
@@ -155,11 +161,13 @@ impl<'a> Lexer<'a> {
                     self.lex_number();
                 } else {
                     return Err(CompilerError::new(
-                        &format!("Hindi suportadong karakter '{}'", ch),
+                        &format!("Hindi valid na karakter: `{ch}`"),
+                        ErrorKind::Error,
                         self.line,
                         self.start_column,
-                        self.source_path,
-                    ));
+                    )
+                    .with_note("Siguro ito ay hindi parte ng sintax ng Tol")
+                    .with_help("Subukan mo itong tanggalin"));
                 }
             }
         }

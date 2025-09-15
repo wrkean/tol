@@ -1,41 +1,74 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
-pub struct CompilerError<'a> {
+use colored::Colorize;
+
+#[derive(Debug)]
+pub struct CompilerError {
+    kind: ErrorKind,
     message: String,
+    note: Option<String>,
+    help: Option<String>,
     line: usize,
     column: usize,
-    source_path: &'a str,
 }
 
-impl<'a> CompilerError<'a> {
-    pub fn new(message: &str, line: usize, column: usize, source_path: &'a str) -> Self {
+impl CompilerError {
+    pub fn new(message: &str, kind: ErrorKind, line: usize, column: usize) -> Self {
         Self {
             message: message.to_string(),
+            kind,
+            note: None,
+            help: None,
             line,
             column,
-            source_path,
         }
     }
 
-    pub fn display(&self) {
-        let formatted = self.format_err();
-
-        eprintln!("{formatted}");
+    pub fn with_note(mut self, note: &str) -> Self {
+        self.note = Some(note.to_string());
+        self
     }
 
-    fn format_err(&self) -> String {
-        let err_msg_line = format!("nag-error: {}\n", self.message);
-        let source_canonpath = fs::canonicalize(self.source_path).unwrap_or_else(|_| {
-            eprintln!("Nabigong makuha ang canonical path ng {}", self.source_path);
-            PathBuf::from(self.source_path)
-        });
-        let err_where_line = format!(
-            "--> linyang {}, kolum {} sa {}\n",
+    pub fn with_help(mut self, help: &str) -> Self {
+        self.help = Some(help.to_string());
+        self
+    }
+
+    pub fn display(&self, source_path: &str) {
+        let canon_source_path = fs::canonicalize(source_path)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        eprintln!(
+            "  [ {} || {} ]",
+            source_path.bold(),
+            canon_source_path.bold()
+        );
+        eprintln!(
+            "  {}[{}:{}]: {}",
+            match self.kind {
+                ErrorKind::Error => "error".bold().red(),
+                ErrorKind::Warning => "babala".bold().bright_yellow(),
+                ErrorKind::Info => "inpormasyon".bold().purple(),
+            },
             self.line,
             self.column,
-            source_canonpath.to_str().unwrap()
+            self.message
         );
 
-        format!("{}\n{}", err_msg_line, err_where_line)
+        if let Some(help) = &self.help {
+            eprintln!("  {}: {}", "tulong".bold().bright_green(), help)
+        }
+
+        if let Some(note) = &self.note {
+            eprintln!("  {}: {}", "tala".bold().cyan(), note);
+        }
     }
+}
+
+#[derive(Debug)]
+pub enum ErrorKind {
+    Error,
+    Warning,
+    Info,
 }
