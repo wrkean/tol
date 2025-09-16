@@ -29,4 +29,6 @@ pub enum TolType {
     Bool,
     Kar,
     Wala,
+
+    Unknown,
 }

@@ -212,6 +212,7 @@ impl<'a> Parser<'a> {
             statements,
             line: left_brace_tok.line(),
             column: left_brace_tok.column(),
+            expr_type: TolType::Unknown,
         })
     }
 
@@ -385,9 +386,9 @@ impl<'a> Parser<'a> {
         let current_tok = self.advance().clone();
 
         match current_tok.kind() {
-            TokenKind::IntLit => Ok(Expr::IntLit(current_tok)),
-            TokenKind::FloatLit => Ok(Expr::FloatLit(current_tok)),
-            TokenKind::Identifier => Ok(Expr::Identifier(current_tok)),
+            TokenKind::IntLit => Ok(Expr::IntLit(current_tok, TolType::Unknown)),
+            TokenKind::FloatLit => Ok(Expr::FloatLit(current_tok, TolType::Unknown)),
+            TokenKind::Identifier => Ok(Expr::Identifier(current_tok, TolType::Unknown)),
             TokenKind::LeftParen => {
                 let expr = self.parse_expression(0)?;
                 self.consume(
@@ -422,6 +423,7 @@ impl<'a> Parser<'a> {
             op: op.clone(),
             left: Box::new(left),
             right: Box::new(right),
+            expr_type: TolType::Unknown,
         })
     }
 
