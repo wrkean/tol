@@ -1,4 +1,4 @@
-use crate::{lexer::token::Token, parser::ast::expr::Expr, tol::toltype::TolType};
+use crate::{lexer::token::Token, parser::ast::expr::Expr, toltype::TolType};
 
 #[derive(Debug)]
 pub enum Stmt {

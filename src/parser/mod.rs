@@ -2,7 +2,7 @@ use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
     parser::ast::{expr::Expr, stmt::Stmt},
-    tol::toltype::TolType,
+    toltype::TolType,
 };
 
 pub mod ast;

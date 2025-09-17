@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{lexer::token::Token, parser::ast::stmt::Stmt, tol::toltype::TolType};
+use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
 
 #[derive(Debug)]
 pub enum Expr {
