@@ -1,10 +1,12 @@
 use std::fs;
 
-use crate::{lexer::Lexer, parser::Parser};
+use crate::{lexer::Lexer, parser::Parser, semantic_analyzer::SemanticAnalyzer};
 
 mod error;
 mod lexer;
 mod parser;
+mod semantic_analyzer;
+mod symbol;
 mod toltype;
 
 // Returns the source string and the canonical path to it
@@ -32,6 +34,9 @@ pub fn compile(source: &str, path_to_source: &str) {
 
     let mut parser = Parser::new(tokens, path_to_source);
     let ast = parser.parse();
+
+    let mut analyzer = SemanticAnalyzer::new(&ast, path_to_source);
+    analyzer.analyze();
 }
 
 #[cfg(test)]
