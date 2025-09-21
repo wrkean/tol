@@ -1,1 +1,6 @@
-ang x: i32 = 12;
+par main() -> i32 {
+    ang x: i32 = 12;
+    ang y: i32 = x + 12_000;
+
+    ibalik x;
+}

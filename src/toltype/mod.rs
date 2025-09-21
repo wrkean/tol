@@ -1,3 +1,4 @@
+use core::panic;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -75,7 +76,34 @@ impl TolType {
 
         self == other
     }
+
+    pub fn as_c(&self) -> String {
+        match self {
+            TolType::I8 => "int8_t",
+            TolType::I16 => "int16_t",
+            TolType::I32 => "int32_t",
+            TolType::I64 => "int64_t",
+            TolType::ISukat => "ptrdiff_t",
+            TolType::U8 => "uint8_t",
+            TolType::U16 => "uint16_t",
+            TolType::U32 => "uint32_t",
+            TolType::U64 => "uint64_t",
+            TolType::USukat => "size_t",
+            TolType::Lutang => "float",
+            TolType::DobleTang => "double",
+            TolType::Bool => "bool",
+            TolType::Kar => "char",
+            TolType::Wala => "void",
+            _ => {
+                // Semantic analyzer already checks if the types are valid, so this maybe won't
+                // trigger
+                panic!("If this panic! gets triggered, something is VERY wrong with the semantic analyzer")
+            }
+        }
+        .to_string()
+    }
 }
+
 impl fmt::Display for TolType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

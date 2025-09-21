@@ -1,13 +1,30 @@
-use std::fs;
+use core::panic;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus},
+};
 
-use crate::{lexer::Lexer, parser::Parser, semantic_analyzer::SemanticAnalyzer};
+use crate::{
+    codegen::CodeGenerator, lexer::Lexer, parser::Parser, semantic_analyzer::SemanticAnalyzer,
+};
 
+mod codegen;
 mod error;
 mod lexer;
 mod parser;
 mod semantic_analyzer;
 mod symbol;
 mod toltype;
+
+fn compile_c(path: &PathBuf) -> ExitStatus {
+    Command::new("gcc")
+        .arg(path)
+        .arg("-o")
+        .arg("exe")
+        .status()
+        .unwrap_or_else(|e| panic!("Hindi naexecute ang command `gcc`: {e}"))
+}
 
 // Returns the source string and the canonical path to it
 pub fn get_source(args: &[String]) -> Result<(String, String), String> {
@@ -37,6 +54,11 @@ pub fn compile(source: &str, path_to_source: &str) {
 
     let mut analyzer = SemanticAnalyzer::new(&ast, path_to_source);
     analyzer.analyze();
+
+    let mut codegen = CodeGenerator::new(&ast, "mga_halimbawa", "main.c")
+        .unwrap_or_else(|e| panic!("Bigo i generate ang C code: {e}"));
+    let output_path = codegen.generate();
+    compile_c(output_path);
 }
 
 #[cfg(test)]
