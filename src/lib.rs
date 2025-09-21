@@ -1,8 +1,9 @@
 use core::panic;
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus},
+    process::{Command, ExitStatus, Stdio},
 };
 
 use crate::{
@@ -17,13 +18,31 @@ mod semantic_analyzer;
 mod symbol;
 mod toltype;
 
-fn compile_c(path: &PathBuf) -> ExitStatus {
-    Command::new("gcc")
-        .arg(path)
-        .arg("-o")
-        .arg("exe")
-        .status()
-        .unwrap_or_else(|e| panic!("Hindi naexecute ang command `gcc`: {e}"))
+fn compile_c(c_code: &str) {
+    let mut child = Command::new("gcc")
+        .args(["-x", "c", "-", "-o", "exe"])
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped()) // capture errors
+        .spawn()
+        .expect("Failed to start gcc");
+
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(c_code.as_bytes())
+        .unwrap();
+
+    let output = child.wait_with_output().unwrap();
+
+    if output.status.success() {
+        println!("Binary compiled: ./exe");
+    } else {
+        eprintln!(
+            "Compilation failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
 
 // Returns the source string and the canonical path to it
@@ -55,10 +74,9 @@ pub fn compile(source: &str, path_to_source: &str) {
     let mut analyzer = SemanticAnalyzer::new(&ast, path_to_source);
     analyzer.analyze();
 
-    let mut codegen = CodeGenerator::new(&ast, "mga_halimbawa", "main.c")
-        .unwrap_or_else(|e| panic!("Bigo i generate ang C code: {e}"));
-    let output_path = codegen.generate();
-    compile_c(output_path);
+    let mut codegen = CodeGenerator::new(&ast);
+    let c_code = codegen.generate();
+    compile_c(c_code);
 }
 
 #[cfg(test)]

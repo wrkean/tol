@@ -12,40 +12,26 @@ use crate::{
 
 pub struct CodeGenerator<'a> {
     ast: &'a Stmt,
-    project_root: PathBuf,
-    output_file: File,
-    output_path: PathBuf,
+    output: String,
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(ast: &'a Stmt, project_root_str: &'a str, filename: &str) -> io::Result<Self> {
-        let project_root = fs::canonicalize(project_root_str)?;
-        let output_path = project_root.join("build/output/c").join(filename);
-
+    pub fn new(ast: &'a Stmt) -> Self {
         // Parents must exist first
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        let mut output_file = File::create(&output_path)?;
-        let _ = output_file.write("#include<stdint.h>\n".as_bytes());
-
-        Ok(Self {
+        Self {
             ast,
-            project_root,
-            output_file,
-            output_path,
-        })
+            output: String::from("#include<stdio.h>\n"),
+        }
     }
 
-    pub fn generate(&mut self) -> &PathBuf {
+    pub fn generate(&mut self) -> &String {
         if let Stmt::Program(statements) = self.ast {
             for statement in statements {
                 self.gen_statement(statement);
             }
         }
 
-        &self.output_path
+        &self.output
     }
 
     fn gen_statement(&mut self, stmt: &Stmt) {
@@ -64,7 +50,7 @@ impl<'a> CodeGenerator<'a> {
 
                 let ang_c = format!("{modifier_c}{type_c} {id_c} = {rhs_c};");
 
-                let _ = self.output_file.write(ang_c.as_bytes());
+                self.output.push_str(&ang_c);
             }
             Stmt::Par {
                 par_identifier,
@@ -76,17 +62,14 @@ impl<'a> CodeGenerator<'a> {
                 let type_c = return_type.as_c();
                 let id_c = par_identifier.lexeme();
                 let params_c = self.gen_params(params);
-                let return_type_c = return_type.as_c();
 
                 let par_c = format!("{type_c} {id_c}{params_c} ");
-
-                let _ = self.output_file.write(par_c.as_bytes());
-                let _ = self.gen_expression(block);
+                self.output.push_str(&par_c);
+                self.gen_expression(block);
             }
-            Stmt::Ibalik { rhs, line, column } => {
+            Stmt::Ibalik { rhs, .. } => {
                 let ibalik_c = format!("return {};", self.gen_expression(rhs));
-
-                let _ = self.output_file.write(ibalik_c.as_bytes());
+                self.output.push_str(&ibalik_c);
             }
             _ => {}
         }
@@ -119,13 +102,13 @@ impl<'a> CodeGenerator<'a> {
                 )
             }
             Expr::Block { statements, .. } => {
-                let _ = self.output_file.write("{".as_bytes());
+                self.output.push('{');
 
                 for statement in statements {
                     self.gen_statement(statement);
                 }
 
-                let _ = self.output_file.write("}".as_bytes());
+                self.output.push('}');
                 String::from("")
             }
         }
