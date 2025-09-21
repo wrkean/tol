@@ -13,6 +13,7 @@ pub struct SemanticAnalyzer<'a> {
     source_path: &'a str,
     symbol_table: Vec<HashMap<String, Symbol>>,
     has_error: bool,
+    current_func_return_type: TolType,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -22,6 +23,7 @@ impl<'a> SemanticAnalyzer<'a> {
             source_path,
             symbol_table: vec![HashMap::new()],
             has_error: false,
+            current_func_return_type: TolType::Unknown,
         }
     }
 
@@ -65,6 +67,12 @@ impl<'a> SemanticAnalyzer<'a> {
                 ..
             } => {
                 if let Err(e) = self.analyze_par(par_identifier, params, return_type, block) {
+                    self.has_error = true;
+                    e.display(self.source_path);
+                }
+            }
+            Stmt::Ibalik { rhs, line, column } => {
+                if let Err(e) = self.analyze_ibalik(rhs, line, column) {
                     self.has_error = true;
                     e.display(self.source_path);
                 }
@@ -144,9 +152,43 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
+        self.current_func_return_type = return_type.to_owned();
         self.analyze_expression(block)?;
 
         self.exit_scope();
+        Ok(())
+    }
+
+    fn analyze_ibalik(
+        &mut self,
+        rhs: &Expr,
+        line: &usize,
+        column: &usize,
+    ) -> Result<(), CompilerError> {
+        let return_type = self.analyze_expression(rhs)?;
+
+        if self.current_func_return_type == TolType::Unknown && return_type != TolType::Wala {
+            return Err(CompilerError::new(
+                "Hindi pwede magbalik sa labas ng paraan",
+                ErrorKind::Error,
+                *line,
+                *column,
+            ));
+        }
+
+        if !return_type.is_assignment_compatible(&self.current_func_return_type)
+        {
+            return Err(CompilerError::new(
+                &format!(
+                    "Hindi pwede mag return ng `{}` dahil ang kasalukuyang paraan ay umaasa ng `{}`",
+                    return_type, self.current_func_return_type
+                ),
+                ErrorKind::Error,
+                *line,
+                *column,
+            ));
+        }
+
         Ok(())
     }
 
@@ -290,7 +332,7 @@ mod test {
 
         let tokens2 = lex(code2);
         let ast2 = parse(&tokens2);
-        let mut analyzer2 = SemanticAnalyzer::new(&ast, "None");
+        let mut analyzer2 = SemanticAnalyzer::new(&ast2, "None");
         analyzer2.analyze();
 
         assert!(analyzer.has_error());
@@ -328,5 +370,31 @@ mod test {
         let mut analyzer = SemanticAnalyzer::new(&ast, "None");
         analyzer.analyze();
         assert!(analyzer.has_error());
+    }
+
+    #[test]
+    fn test_incompatible_return_type() {
+        let code = "par test() -> i32 { ibalik 15.5; }";
+        let code2 = "par test() -> dobletang { ibalik 15; }";
+        let code3 = "par test() -> i32 { ibalik 15; }";
+
+        let tokens = lex(code);
+        let ast = parse(&tokens);
+        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
+        analyzer.analyze();
+
+        let tokens2 = lex(code2);
+        let ast2 = parse(&tokens2);
+        let mut analyzer2 = SemanticAnalyzer::new(&ast2, "None");
+        analyzer2.analyze();
+
+        let tokens3 = lex(code3);
+        let ast3 = parse(&tokens3);
+        let mut analyzer3 = SemanticAnalyzer::new(&ast3, "None");
+        analyzer3.analyze();
+
+        assert!(analyzer.has_error());
+        assert!(analyzer2.has_error());
+        assert!(!analyzer3.has_error());
     }
 }

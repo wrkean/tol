@@ -46,6 +46,7 @@ impl<'a> Parser<'a> {
         match self.peek().kind() {
             TokenKind::Par => self.parse_par(),
             TokenKind::Ang => self.parse_ang(),
+            TokenKind::Ibalik => self.parse_ibalik(),
             _ => Err(CompilerError::new(
                 &format!(
                     "`{}` ay hindi pwedeng magsimula kagaya ng mga pahayag",
@@ -291,6 +292,38 @@ impl<'a> Parser<'a> {
             rhs,
             line: ang_tok.line(),
             column: ang_tok.column(),
+        })
+    }
+
+    fn parse_ibalik(&mut self) -> Result<Stmt, CompilerError> {
+        let ibalik_tok = self
+            .consume(
+                TokenKind::Ibalik,
+                CompilerError::new(
+                    &format!("Nag-asa ng `ibalik`, nakita ay `{}`", self.peek().lexeme()),
+                    ErrorKind::Error,
+                    self.peek().line(),
+                    self.peek().column(),
+                ),
+            )?
+            .clone();
+
+        let rhs = self.parse_expression(0)?;
+
+        self.consume(
+            TokenKind::SemiColon,
+            CompilerError::new(
+                &format!("Nag-asa ng `;`, nakita ay `{}`", self.peek().lexeme()),
+                ErrorKind::Error,
+                self.peek().line(),
+                self.peek().column(),
+            ),
+        )?;
+
+        Ok(Stmt::Ibalik {
+            rhs,
+            line: ibalik_tok.line(),
+            column: ibalik_tok.column(),
         })
     }
 

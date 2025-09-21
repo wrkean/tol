@@ -19,4 +19,9 @@ pub enum Stmt {
         line: usize,
         column: usize,
     },
+    Ibalik {
+        rhs: Expr,
+        line: usize,
+        column: usize,
+    },
 }

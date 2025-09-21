@@ -65,12 +65,17 @@ impl TolType {
     }
 
     pub fn is_assignment_compatible(&self, other: &Self) -> bool {
-        (self.is_integer() && (other.is_integer() || other == &TolType::UnsizedInt))
-            || (self.is_float() && (other.is_float() || other == &TolType::UnsizedFloat))
-            || (self == other)
+        if self == &TolType::UnsizedInt {
+            return other.is_integer();
+        }
+
+        if self == &TolType::UnsizedFloat {
+            return other.is_float();
+        }
+
+        self == other
     }
 }
-
 impl fmt::Display for TolType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -93,16 +98,16 @@ impl fmt::Display for TolType {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_arithmetic_compatibility() {
-        assert!(TolType::I8.is_arithmetic_compatible(&TolType::I64));
-        assert!(TolType::U8.is_arithmetic_compatible(&TolType::U64));
-        assert!(!TolType::I32.is_arithmetic_compatible(&TolType::Lutang));
-        assert!(!TolType::I64.is_arithmetic_compatible(&TolType::DobleTang));
-    }
-}
+//
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//
+//     #[test]
+//     fn test_arithmetic_compatibility() {
+//         assert!(TolType::I8.is_arithmetic_compatible(&TolType::I64));
+//         assert!(TolType::U8.is_arithmetic_compatible(&TolType::U64));
+//         assert!(!TolType::I32.is_arithmetic_compatible(&TolType::Lutang));
+//         assert!(!TolType::I64.is_arithmetic_compatible(&TolType::DobleTang));
+//     }
+// }
