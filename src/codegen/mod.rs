@@ -1,9 +1,3 @@
-use std::{
-    fs::{self, File},
-    io::{self, Write},
-    path::PathBuf,
-};
-
 use crate::{
     lexer::token::Token,
     parser::ast::{expr::Expr, stmt::Stmt},

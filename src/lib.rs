@@ -1,9 +1,7 @@
-use core::panic;
 use std::{
     fs,
     io::Write,
-    path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
+    process::{Command, Stdio},
 };
 
 use crate::{
