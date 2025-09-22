@@ -56,6 +56,10 @@ impl<'a> CodeGenerator<'a> {
             } => {
                 let type_c = return_type.as_c();
                 let id_c = par_identifier.lexeme();
+                let id_c = match id_c {
+                    "una" => "main",
+                    _ => id_c,
+                };
                 let params_c = self.gen_params(params);
 
                 let par_c = format!("{type_c} {id_c}{params_c} ");
