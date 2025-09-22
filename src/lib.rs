@@ -72,9 +72,11 @@ pub fn compile(source: &str, path_to_source: &str) {
     let mut analyzer = SemanticAnalyzer::new(&ast, path_to_source);
     analyzer.analyze();
 
-    let mut codegen = CodeGenerator::new(&ast);
-    let c_code = codegen.generate();
-    compile_c(c_code);
+    if !analyzer.has_error() {
+        let mut codegen = CodeGenerator::new(&ast);
+        let c_code = codegen.generate();
+        compile_c(c_code);
+    }
 }
 
 #[cfg(test)]
