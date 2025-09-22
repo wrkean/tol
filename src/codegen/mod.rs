@@ -135,10 +135,10 @@ impl<'a> CodeGenerator<'a> {
                     let str_arg = self.gen_expression(&args[0]);
                     match callee.lexeme() {
                         "print" => {
-                            format!("puts({str_arg})")
+                            format!("fputs({str_arg}, stdout)")
                         }
                         "println" => {
-                            format!("puts({str_arg}\n)")
+                            format!("puts({str_arg})")
                         }
                         _ => "".to_owned(),
                     }
