@@ -27,6 +27,7 @@ pub enum TokenKind {
     Star,
     Slash,
     Percent,
+    At,
 
     // Assignment operators
     Equal,

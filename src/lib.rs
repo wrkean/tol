@@ -63,7 +63,7 @@ pub fn compile(source: &str, path_to_source: &str) {
     let mut lexer = Lexer::new(source, path_to_source);
     let tokens = lexer.lex();
     for tok in tokens {
-        println!("{}", tok.lexeme());
+        println!("{} <=> {:?}", tok.lexeme(), tok.kind());
     }
 
     let mut parser = Parser::new(tokens, path_to_source);

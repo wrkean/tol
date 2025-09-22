@@ -25,6 +25,7 @@ impl<'a> CodeGenerator<'a> {
             }
         }
 
+        println!("{}", self.output);
         &self.output
     }
 
@@ -65,7 +66,12 @@ impl<'a> CodeGenerator<'a> {
                 let ibalik_c = format!("return {};", self.gen_expression(rhs));
                 self.output.push_str(&ibalik_c);
             }
-            _ => {}
+            Stmt::ExprS { expr, .. } => {
+                let expr_c = self.gen_expression(expr);
+                self.output.push_str(&expr_c);
+                self.output.push(';');
+            }
+            Stmt::Program(_) => {}
         }
     }
 
@@ -87,6 +93,9 @@ impl<'a> CodeGenerator<'a> {
             Expr::IntLit(tok) | Expr::FloatLit(tok) | Expr::Identifier(tok) => {
                 tok.lexeme().to_string()
             }
+            Expr::StringLit(tok) => {
+                format!("\"{}\"", tok.lexeme())
+            }
             Expr::Binary { op, left, right } => {
                 format!(
                     "({} {} {})",
@@ -104,6 +113,34 @@ impl<'a> CodeGenerator<'a> {
 
                 self.output.push('}');
                 String::from("")
+            }
+            Expr::FnCall { callee, args } => {
+                let mut args_str_c = String::from("(");
+                for arg in args {
+                    args_str_c.push_str(&self.gen_expression(arg));
+                    if arg != args.last().unwrap() {
+                        args_str_c.push_str(", ");
+                    }
+                }
+                args_str_c.push(')');
+
+                format!("{}{}", callee.lexeme(), args_str_c)
+            }
+            Expr::MagicFnCall { fncall } => {
+                if let Expr::FnCall { callee, args } = fncall.as_ref() {
+                    let str_arg = self.gen_expression(&args[0]);
+                    match callee.lexeme() {
+                        "print" => {
+                            format!("puts({str_arg})")
+                        }
+                        "println" => {
+                            format!("puts({str_arg}\n)")
+                        }
+                        _ => "".to_owned(),
+                    }
+                } else {
+                    panic!("MagicFnCall did not contain a function call!")
+                }
             }
         }
     }

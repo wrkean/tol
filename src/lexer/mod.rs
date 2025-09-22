@@ -77,6 +77,7 @@ impl<'a> Lexer<'a> {
             ':' => self.add_token(TokenKind::Colon, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
+            '@' => self.add_token(TokenKind::At, None),
             '+' => {
                 if self.match_char('=') {
                     self.add_token(TokenKind::PlusEqual, None);
@@ -155,6 +156,9 @@ impl<'a> Lexer<'a> {
                 self.line += 1;
                 self.column = 1;
             }
+            '"' => {
+                self.lex_string()?;
+            }
             _ => {
                 if self.is_identifier_start(ch) {
                     self.lex_identifier();
@@ -227,6 +231,59 @@ impl<'a> Lexer<'a> {
         };
 
         self.add_token(kind, Some(&without_underscores));
+    }
+
+    fn lex_string(&mut self) -> Result<(), CompilerError> {
+        let mut value = String::new();
+
+        while let Some(&ch) = self.peek() {
+            match ch {
+                '"' => {
+                    self.advance(); // Consumes closing `"`
+                    self.add_token(TokenKind::StringLit, Some(&value));
+                    return Ok(());
+                }
+                '\n' => {
+                    self.line += 1;
+                    self.column = 1;
+                    value.push('\n');
+                    self.advance();
+                }
+                '\\' => {
+                    self.advance();
+                    if let Some(esc) = self.advance() {
+                        let unescaped = match esc {
+                            'n' => '\n',
+                            't' => '\t',
+                            'r' => '\r',
+                            '"' => '"',
+                            '\\' => '\\',
+                            other => other,
+                        };
+                        value.push(unescaped);
+                    } else {
+                        return Err(CompilerError::new(
+                            "Ang sinulid ay hindi isinara",
+                            ErrorKind::Error,
+                            self.line,
+                            self.column,
+                        )
+                        .with_help("Subukan mog maglagay ng `\"` sa huli"));
+                    }
+                }
+                _ => {
+                    value.push(ch);
+                    self.advance();
+                }
+            }
+        }
+
+        Err(CompilerError::new(
+            "Ang sinulid ay hindi isinara",
+            ErrorKind::Error,
+            self.line,
+            self.start_column,
+        ))
     }
 
     fn add_token(&mut self, kind: TokenKind, literal: Option<&str>) {

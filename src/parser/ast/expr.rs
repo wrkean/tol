@@ -1,16 +1,24 @@
 use std::fmt;
 
-use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
+use crate::{lexer::token::Token, parser::ast::stmt::Stmt};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     IntLit(Token),
     FloatLit(Token),
+    StringLit(Token),
     Identifier(Token),
     Binary {
         op: Token,
         left: Box<Expr>,
         right: Box<Expr>,
+    },
+    FnCall {
+        callee: Token,
+        args: Vec<Expr>,
+    },
+    MagicFnCall {
+        fncall: Box<Expr>,
     },
     Block {
         statements: Vec<Stmt>,

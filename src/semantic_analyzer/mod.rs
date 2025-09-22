@@ -18,13 +18,18 @@ pub struct SemanticAnalyzer<'a> {
 
 impl<'a> SemanticAnalyzer<'a> {
     pub fn new(ast: &'a Stmt, source_path: &'a str) -> Self {
-        Self {
+        let mut new_analyzer = Self {
             ast,
             source_path,
             symbol_table: vec![HashMap::new()],
             has_error: false,
             current_func_return_type: TolType::Unknown,
-        }
+        };
+
+        // Declare magic functions first
+        new_analyzer.declare_magic_funcs();
+
+        new_analyzer
     }
 
     pub fn has_error(&self) -> bool {
@@ -77,7 +82,13 @@ impl<'a> SemanticAnalyzer<'a> {
                     e.display(self.source_path);
                 }
             }
-            _ => {}
+            Stmt::ExprS { expr, .. } => {
+                if let Err(e) = self.analyze_expression(expr) {
+                    self.has_error = true;
+                    e.display(self.source_path);
+                }
+            }
+            Stmt::Program(_) => {}
         };
     }
 
@@ -176,8 +187,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
-        if !return_type.is_assignment_compatible(&self.current_func_return_type)
-        {
+        if !return_type.is_assignment_compatible(&self.current_func_return_type) {
             return Err(CompilerError::new(
                 &format!(
                     "Hindi pwede mag return ng `{}` dahil ang kasalukuyang paraan ay umaasa ng `{}`",
@@ -196,6 +206,7 @@ impl<'a> SemanticAnalyzer<'a> {
         match expr {
             Expr::IntLit(_) => Ok(TolType::UnsizedInt),
             Expr::FloatLit(_) => Ok(TolType::UnsizedFloat),
+            Expr::StringLit(_) => Ok(TolType::Sinulid),
             Expr::Identifier(tok) => match self.lookup_symbol(tok.lexeme()) {
                 Some(s) => Ok(s.get_type().to_owned()),
                 None => Err(CompilerError::new(
@@ -246,7 +257,91 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.exit_scope();
                 Ok(TolType::Unknown)
             }
+            Expr::FnCall { callee, args } => {
+                let symbol = match self.lookup_symbol(callee.lexeme()) {
+                    Some(s) => s,
+                    None => {
+                        return Err(CompilerError::new(
+                            &format!("Ang `{}` ay hindi na-ideklara", callee.lexeme()),
+                            ErrorKind::Error,
+                            callee.line(),
+                            callee.column(),
+                        ));
+                    }
+                };
+
+                if let Symbol::ParSymbol {
+                    param_types,
+                    return_type,
+                    ..
+                } = symbol
+                {
+                    if args.len() < param_types.len() {
+                        return Err(CompilerError::new(
+                            &format!(
+                                "`{}` lang ang argumento na nailagay, nag-asa ng `{}`",
+                                args.len(),
+                                param_types.len()
+                            ),
+                            ErrorKind::Error,
+                            callee.line(),
+                            callee.column(),
+                        ));
+                    }
+
+                    if args.len() > param_types.len() {
+                        return Err(CompilerError::new(
+                            &format!(
+                                "`{}` ang nailagay na argumento, nag-asa lang ng `{}`",
+                                args.len(),
+                                param_types.len()
+                            ),
+                            ErrorKind::Error,
+                            callee.line(),
+                            callee.column(),
+                        ));
+                    }
+
+                    let return_type_ = return_type.clone();
+                    let param_types_ = param_types.clone();
+
+                    let mut arg_types = Vec::with_capacity(args.len());
+                    for expr in args {
+                        arg_types.push(self.analyze_expression(expr)?);
+                    }
+
+                    if arg_types != param_types_ {
+                        return Err(CompilerError::new(
+                            "Magkaiba ang tipo ng argumento sa mga parametro",
+                            ErrorKind::Error,
+                            callee.line(),
+                            callee.column(),
+                        ));
+                    }
+
+                    return Ok(return_type_);
+                }
+                panic!("The symbol is not declared as `par` symbol");
+            }
+            Expr::MagicFnCall { fncall } => self.analyze_expression(fncall),
         }
+    }
+
+    fn declare_magic_funcs(&mut self) {
+        let print_symbol = Symbol::ParSymbol {
+            name: "print".to_string(),
+            param_types: vec![TolType::Sinulid],
+            return_type: TolType::Wala,
+        };
+
+        let println_symbol = Symbol::ParSymbol {
+            name: "println".to_string(),
+            param_types: vec![TolType::Sinulid],
+            return_type: TolType::Wala,
+        };
+
+        self.declare_symbol("print", print_symbol);
+        self.declare_symbol("println", println_symbol);
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {

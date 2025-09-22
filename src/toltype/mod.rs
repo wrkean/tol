@@ -32,6 +32,7 @@ pub enum TolType {
     Bool,
     Kar,
     Wala,
+    Sinulid,
 
     Unknown,
 }
@@ -94,6 +95,7 @@ impl TolType {
             TolType::Bool => "bool",
             TolType::Kar => "char",
             TolType::Wala => "void",
+            TolType::Sinulid => "char*",
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
@@ -122,6 +124,7 @@ impl fmt::Display for TolType {
             TolType::Bool => write!(f, "bool"),
             TolType::Kar => write!(f, "kar"),
             TolType::Wala => write!(f, "wala"),
+            TolType::Sinulid => write!(f, "sinulid"),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

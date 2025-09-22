@@ -1,6 +1,6 @@
 use crate::{lexer::token::Token, parser::ast::expr::Expr, toltype::TolType};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Stmt {
     Program(Vec<Stmt>),
     Par {
@@ -21,6 +21,11 @@ pub enum Stmt {
     },
     Ibalik {
         rhs: Expr,
+        line: usize,
+        column: usize,
+    },
+    ExprS {
+        expr: Expr,
         line: usize,
         column: usize,
     },

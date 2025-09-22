@@ -1,6 +1,7 @@
 par main() -> i32 {
     ang x: i32 = 12;
     ang y: i32 = x + 12;
+    @println("Hello World");
 
     ibalik x + y;
 }

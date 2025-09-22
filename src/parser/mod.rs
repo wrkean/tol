@@ -47,15 +47,7 @@ impl<'a> Parser<'a> {
             TokenKind::Par => self.parse_par(),
             TokenKind::Ang => self.parse_ang(),
             TokenKind::Ibalik => self.parse_ibalik(),
-            _ => Err(CompilerError::new(
-                &format!(
-                    "`{}` ay hindi pwedeng magsimula kagaya ng mga pahayag",
-                    self.peek().lexeme()
-                ),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )),
+            _ => self.parse_expr_stmt(),
         }
     }
 
@@ -327,6 +319,28 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_expr_stmt(&mut self) -> Result<Stmt, CompilerError> {
+        let start_tok = self.peek().clone();
+        let expr = self.parse_expression(0)?;
+
+        self.consume(
+            TokenKind::SemiColon,
+            CompilerError::new(
+                &format!("Nag-asa ng `;`, pero nakita ay `{}`", self.peek().lexeme()),
+                ErrorKind::Error,
+                self.peek().line(),
+                self.peek().column(),
+            )
+            .with_help("Lagyan mo ng `;`"),
+        )?;
+
+        Ok(Stmt::ExprS {
+            expr,
+            line: start_tok.line(),
+            column: start_tok.column(),
+        })
+    }
+
     fn parse_type(&mut self) -> Result<TolType, CompilerError> {
         // NOTE: Only works for primitives for now
         match self.peek().lexeme() {
@@ -420,7 +434,14 @@ impl<'a> Parser<'a> {
         match current_tok.kind() {
             TokenKind::IntLit => Ok(Expr::IntLit(current_tok)),
             TokenKind::FloatLit => Ok(Expr::FloatLit(current_tok)),
-            TokenKind::Identifier => Ok(Expr::Identifier(current_tok)),
+            TokenKind::StringLit => Ok(Expr::StringLit(current_tok)),
+            TokenKind::Identifier => {
+                if self.peek().kind() == &TokenKind::LeftParen {
+                    return self.parse_fncall(&current_tok);
+                }
+
+                Ok(Expr::Identifier(current_tok))
+            }
             TokenKind::LeftParen => {
                 let expr = self.parse_expression(0)?;
                 self.consume(
@@ -434,6 +455,14 @@ impl<'a> Parser<'a> {
                     .with_help("Lagyan mo ng `)`"),
                 )?;
                 Ok(expr)
+            }
+            TokenKind::At => {
+                let callee = self.advance().clone();
+
+                let fncall = self.parse_fncall(&callee)?;
+                Ok(Expr::MagicFnCall {
+                    fncall: Box::new(fncall),
+                })
             }
             _ => Err(CompilerError::new(
                 &format!(
@@ -455,6 +484,33 @@ impl<'a> Parser<'a> {
             op: op.clone(),
             left: Box::new(left),
             right: Box::new(right),
+        })
+    }
+
+    fn parse_fncall(&mut self, callee: &Token) -> Result<Expr, CompilerError> {
+        self.advance(); // Consumes `(`
+
+        let mut args = Vec::new();
+        while self.peek().kind() != &TokenKind::RightParen {
+            args.push(self.parse_expression(0)?);
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightParen {
+                return Err(CompilerError::new(
+                    &format!("Nag-asa ng `,` o `)`, nakita ay `{}`", self.peek().lexeme()),
+                    ErrorKind::Error,
+                    self.peek().line(),
+                    self.peek().column(),
+                ));
+            }
+        }
+
+        self.advance(); // Consumes the `)`
+
+        Ok(Expr::FnCall {
+            callee: callee.to_owned(),
+            args,
         })
     }
 
