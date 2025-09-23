@@ -25,7 +25,11 @@ impl<'a> CodeGenerator<'a> {
             }
         }
 
+        // Call the main function defined by the user in C's main function
+        self.output.push_str("int main(){__TOL_main__();return 0;}");
+
         println!("{}", self.output);
+
         &self.output
     }
 
@@ -57,7 +61,7 @@ impl<'a> CodeGenerator<'a> {
                 let type_c = return_type.as_c();
                 let id_c = par_identifier.lexeme();
                 let id_c = match id_c {
-                    "una" => "main",
+                    "una" => "__TOL_main__",
                     _ => id_c,
                 };
                 let params_c = self.gen_params(params);
