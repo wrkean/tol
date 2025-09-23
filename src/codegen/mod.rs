@@ -14,7 +14,10 @@ impl<'a> CodeGenerator<'a> {
         // Parents must exist first
         Self {
             ast,
-            output: String::from("#include<stdio.h>\n"),
+            output: String::from(
+                "#include<stdio.h>\n\
+#include<stdlib.h>\n",
+            ),
         }
     }
 
@@ -136,13 +139,18 @@ impl<'a> CodeGenerator<'a> {
             }
             Expr::MagicFnCall { fncall } => {
                 if let Expr::FnCall { callee, args } = fncall.as_ref() {
-                    let str_arg = self.gen_expression(&args[0]);
                     match callee.lexeme() {
                         "print" => {
+                            let str_arg = self.gen_expression(&args[0]);
                             format!("fputs({str_arg}, stdout)")
                         }
                         "println" => {
+                            let str_arg = self.gen_expression(&args[0]);
                             format!("puts({str_arg})")
+                        }
+                        "exit" => {
+                            let int_arg = self.gen_expression(&args[0]);
+                            format!("exit({int_arg})")
                         }
                         _ => "".to_owned(),
                     }

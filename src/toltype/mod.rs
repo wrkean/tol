@@ -1,5 +1,5 @@
 use core::panic;
-use std::fmt;
+use std::{char::ToLowercase, fmt};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TolType {
@@ -125,6 +125,8 @@ impl fmt::Display for TolType {
             TolType::Kar => write!(f, "kar"),
             TolType::Wala => write!(f, "wala"),
             TolType::Sinulid => write!(f, "sinulid"),
+            TolType::UnsizedInt => write!(f, "literal na integer"),
+            TolType::UnsizedFloat => write!(f, "literal na lutang"),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

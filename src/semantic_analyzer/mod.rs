@@ -310,13 +310,23 @@ impl<'a> SemanticAnalyzer<'a> {
                         arg_types.push(self.analyze_expression(expr)?);
                     }
 
-                    if arg_types != param_types_ {
-                        return Err(CompilerError::new(
-                            "Magkaiba ang tipo ng argumento sa mga parametro",
-                            ErrorKind::Error,
-                            callee.line(),
-                            callee.column(),
-                        ));
+                    // if arg_types != param_types_ {
+                    //     return Err(CompilerError::new(
+                    //         "Magkaiba ang tipo ng argumento sa mga parametro",
+                    //         ErrorKind::Error,
+                    //         callee.line(),
+                    //         callee.column(),
+                    //     ));
+                    // }
+                    for (arg, param) in arg_types.iter().zip(&param_types_) {
+                        if !arg.is_assignment_compatible(param) {
+                            return Err(CompilerError::new(
+                                &format!("Hindi pwede ilagay ang {arg} sa {param}"),
+                                ErrorKind::Error,
+                                callee.line(),
+                                callee.column(),
+                            ));
+                        }
                     }
 
                     return Ok(return_type_);
@@ -340,8 +350,15 @@ impl<'a> SemanticAnalyzer<'a> {
             return_type: TolType::Wala,
         };
 
+        let exit_symbol = Symbol::ParSymbol {
+            name: "exit".to_string(),
+            param_types: vec![TolType::I32],
+            return_type: TolType::Wala,
+        };
+
         self.declare_symbol("print", print_symbol);
         self.declare_symbol("println", println_symbol);
+        self.declare_symbol("exit", exit_symbol);
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {

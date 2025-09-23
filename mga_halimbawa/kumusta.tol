@@ -1,3 +1,4 @@
 paraan una() {
     @println("Kumusta mundo");
+    @exit(1);
 }
