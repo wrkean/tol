@@ -1,0 +1,3 @@
+par una() {
+    @println("Kumusta mundo");
+}

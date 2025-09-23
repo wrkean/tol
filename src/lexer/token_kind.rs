@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     // Keywords
-    Par,
+    Paraan,
     Ang,
     Maiba,
     Ibalik,

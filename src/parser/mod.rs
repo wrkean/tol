@@ -44,7 +44,7 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Result<Stmt, CompilerError> {
         match self.peek().kind() {
-            TokenKind::Par => self.parse_par(),
+            TokenKind::Paraan => self.parse_par(),
             TokenKind::Ang => self.parse_ang(),
             TokenKind::Ibalik => self.parse_ibalik(),
             _ => self.parse_expr_stmt(),
@@ -54,7 +54,7 @@ impl<'a> Parser<'a> {
     fn parse_par(&mut self) -> Result<Stmt, CompilerError> {
         let par_tok = self
             .consume(
-                TokenKind::Par,
+                TokenKind::Paraan,
                 CompilerError::new(
                     &format!(
                         "Nag-asa ng `par`, pero nakita ay `{}`",
@@ -524,7 +524,7 @@ impl<'a> Parser<'a> {
             }
 
             match self.peek().kind() {
-                TokenKind::Par | TokenKind::Ang => return,
+                TokenKind::Paraan | TokenKind::Ang => return,
                 _ => {}
             }
 

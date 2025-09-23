@@ -24,7 +24,7 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str, source_path: &'a str) -> Self {
         let keywords = HashMap::from([
-            ("par", TokenKind::Par),
+            ("paraan", TokenKind::Paraan),
             ("ang", TokenKind::Ang),
             ("maiba", TokenKind::Maiba),
             ("ibalik", TokenKind::Ibalik),
@@ -435,7 +435,7 @@ mod test {
         assert_eq!(
             tokens,
             vec![
-                TokenKind::Par,
+                TokenKind::Paraan,
                 TokenKind::Ang,
                 TokenKind::Maiba,
                 TokenKind::Identifier,
