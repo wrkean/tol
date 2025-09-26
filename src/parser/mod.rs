@@ -47,6 +47,7 @@ impl<'a> Parser<'a> {
             TokenKind::Paraan => self.parse_par(),
             TokenKind::Ang => self.parse_ang(),
             TokenKind::Ibalik => self.parse_ibalik(),
+            TokenKind::Bagay => self.parse_bagay(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -317,6 +318,101 @@ impl<'a> Parser<'a> {
             line: ibalik_tok.line(),
             column: ibalik_tok.column(),
         })
+    }
+
+    fn parse_bagay(&mut self) -> Result<Stmt, CompilerError> {
+        self.consume(
+            TokenKind::Bagay,
+            CompilerError::new(
+                &format!(
+                    "Umaasa ng `bagay` pero nakita ay `{}`",
+                    self.peek().lexeme()
+                ),
+                ErrorKind::Error,
+                self.peek().line(),
+                self.peek().column(),
+            ),
+        )?
+        .clone();
+
+        let bagay_identifier = self
+            .consume(
+                TokenKind::Identifier,
+                CompilerError::new(
+                    &format!(
+                        "Umaasa ng pangalan para sa bagay na ito pero nakita ay `{}`",
+                        self.peek().lexeme()
+                    ),
+                    ErrorKind::Error,
+                    self.peek().line(),
+                    self.peek().column(),
+                ),
+            )?
+            .clone();
+
+        let fields = self.parse_bagay_fields()?;
+
+        Ok(Stmt::Bagay {
+            bagay_identifier,
+            fields,
+        })
+    }
+
+    fn parse_bagay_fields(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
+        self.consume(
+            TokenKind::LeftBrace,
+            CompilerError::new(
+                &format!("Umaasa ng `{{` pero nakita ay `{}`", self.peek().lexeme()),
+                ErrorKind::Error,
+                self.peek().line(),
+                self.peek().column(),
+            ),
+        )?;
+
+        let mut fields = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            let field_id = self
+                .consume(
+                    TokenKind::Identifier,
+                    CompilerError::new(
+                        &format!("Umaasa ng maiba pero nakita ay `{}`", self.peek().lexeme()),
+                        ErrorKind::Error,
+                        self.peek().line(),
+                        self.peek().column(),
+                    ),
+                )?
+                .clone();
+            self.consume(
+                TokenKind::Colon,
+                CompilerError::new(
+                    &format!("Umaasa ng `:` pero nakita ay `{}`", self.peek().lexeme()),
+                    ErrorKind::Error,
+                    self.peek().line(),
+                    self.peek().column(),
+                ),
+            )?;
+            let field_type = self.parse_type()?;
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(CompilerError::new(
+                    &format!(
+                        "Umaaasa ng `,` o `}}` pero nakita ay `{}`",
+                        self.peek().lexeme()
+                    ),
+                    ErrorKind::Error,
+                    self.peek().line(),
+                    self.peek().column(),
+                ));
+            }
+
+            fields.push((field_id, field_type));
+        }
+
+        self.advance(); // Consumes `}`
+
+        Ok(fields)
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, CompilerError> {
