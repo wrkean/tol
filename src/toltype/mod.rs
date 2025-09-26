@@ -34,6 +34,9 @@ pub enum TolType {
     Wala,
     Sinulid,
 
+    // Composite
+    Bagay(String),
+
     Unknown,
 }
 

@@ -1,3 +1,8 @@
+bagay Tao {
+    edad: i32,
+    tuig: u32,
+}
+
 paraan una() {
     @println("Kumusta mundo");
     @exit(1);
