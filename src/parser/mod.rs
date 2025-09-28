@@ -54,33 +54,11 @@ impl<'a> Parser<'a> {
 
     fn parse_par(&mut self) -> Result<Stmt, CompilerError> {
         let par_tok = self
-            .consume(
-                TokenKind::Paraan,
-                CompilerError::new(
-                    &format!(
-                        "Nag-asa ng `par`, pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?
+            .consume(TokenKind::Paraan, self.expect_err("par"))?
             .clone();
 
         let par_identifier = self
-            .consume(
-                TokenKind::Identifier,
-                CompilerError::new(
-                    &format!(
-                        "Nag-asa ng maiiba, pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
         let params = self.parse_params()?;
@@ -107,44 +85,20 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         self.consume(
             TokenKind::LeftParen,
-            CompilerError::new(
-                &format!(
-                    "Nag-asa ng `(` para simulan ang mga parameter, pero nakita ay `{}`",
-                    self.peek().lexeme()
-                ),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )
-            .with_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
+            self.expect_err("`(`")
+                .with_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
         )?;
 
         while self.peek().kind() != &TokenKind::RightParen {
             let param_identifier = self
-                .consume(
-                    TokenKind::Identifier,
-                    CompilerError::new(
-                        &format!(
-                            "Nag-asa ng maiiba, pero nakita ay `{}`",
-                            self.peek().lexeme()
-                        ),
-                        ErrorKind::Error,
-                        self.peek().line(),
-                        self.peek().column(),
-                    ),
-                )?
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
                 .clone();
 
             self.consume(
                 TokenKind::Colon,
-                CompilerError::new(
-                    &format!("Nag-asa ng `:`, pero nakita ay `{}`", self.peek().lexeme()),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                )
-                .with_help("Lagyan mo ng `:` dito")
-                .with_note("Ang `:` ay ginagamit sa pag hiwalay ng tipo sa maiiba"),
+                self.expect_err("`:`")
+                    .with_help("Lagyan mo ng `:` dito")
+                    .with_note("Ang `:` ay ginagamit sa pag hiwalay ng tipo sa maiiba"),
             )?;
 
             let param_type = self.parse_type()?;
@@ -171,18 +125,7 @@ impl<'a> Parser<'a> {
 
     fn parse_block(&mut self) -> Result<Expr, CompilerError> {
         let left_brace_tok = self
-            .consume(
-                TokenKind::LeftBrace,
-                CompilerError::new(
-                    &format!(
-                        "Nag-asa ng `{{` para simulan ang isang bloke, pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?
+            .consume(TokenKind::LeftBrace, self.expect_err("`{`"))?
             .clone();
 
         let mut statements = Vec::new();
@@ -213,15 +156,8 @@ impl<'a> Parser<'a> {
         let ang_tok = self
             .consume(
                 TokenKind::Ang,
-                CompilerError::new(
-                    &format!(
-                        "Nag-asa ng `ang` para magdeklara ng bagong maiiba, pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
+                self.expect_err("`ang`")
+                    .with_note("Ginamit ang `ang` para mag-deklara ng bagong pangalan"),
             )?
             .clone();
 
@@ -230,28 +166,16 @@ impl<'a> Parser<'a> {
         let ang_identifier = self
             .consume(
                 TokenKind::Identifier,
-                CompilerError::new(
-                    &format!(
-                        "Nag-asa ng maiiba, pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
+                self.expect_err("pangalan")
+                    .with_note("Siguraduhing hindi keyword ang iyong nailagay"),
             )?
             .clone();
 
         self.consume(
             TokenKind::Colon,
-            CompilerError::new(
-                &format!("Nag-asa ng `:`, pero nakita ay `{}`", self.peek().lexeme()),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )
-            .with_help("Lagyan mo ng `:` dito")
-            .with_note("Ang `:` ay ginagamit sa pag hiwalay ng tipo sa maiiba"),
+            self.expect_err("`:`")
+                .with_help("Maglagay ng `:` dito")
+                .with_note("Ang `:` ay ginagamit sa paghiwalay ng pangalan sa tipo nito"),
         )?;
 
         let ang_type = self.parse_type()?;
@@ -269,13 +193,7 @@ impl<'a> Parser<'a> {
 
         self.consume(
             TokenKind::SemiColon,
-            CompilerError::new(
-                &format!("Nag-asa ng `;`, pero nakita ay `{}`", self.peek().lexeme()),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )
-            .with_help("Lagyan mo ng `;`"),
+            self.expect_err("`;`").with_help("Lagyan mo ng `;`"),
         )?;
 
         Ok(Stmt::Ang {
@@ -290,27 +208,14 @@ impl<'a> Parser<'a> {
 
     fn parse_ibalik(&mut self) -> Result<Stmt, CompilerError> {
         let ibalik_tok = self
-            .consume(
-                TokenKind::Ibalik,
-                CompilerError::new(
-                    &format!("Nag-asa ng `ibalik`, nakita ay `{}`", self.peek().lexeme()),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?
+            .consume(TokenKind::Ibalik, self.expect_err("`ibalik`"))?
             .clone();
 
         let rhs = self.parse_expression(0)?;
 
         self.consume(
             TokenKind::SemiColon,
-            CompilerError::new(
-                &format!("Nag-asa ng `;`, nakita ay `{}`", self.peek().lexeme()),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            ),
+            self.expect_err("`;`").with_help("Lagyan ng `;` dito"),
         )?;
 
         Ok(Stmt::Ibalik {
@@ -321,33 +226,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_bagay(&mut self) -> Result<Stmt, CompilerError> {
-        self.consume(
-            TokenKind::Bagay,
-            CompilerError::new(
-                &format!(
-                    "Umaasa ng `bagay` pero nakita ay `{}`",
-                    self.peek().lexeme()
-                ),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            ),
-        )?
-        .clone();
+        self.consume(TokenKind::Bagay, self.expect_err("`bagay`"))?;
 
         let bagay_identifier = self
-            .consume(
-                TokenKind::Identifier,
-                CompilerError::new(
-                    &format!(
-                        "Umaasa ng pangalan para sa bagay na ito pero nakita ay `{}`",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
         let fields = self.parse_bagay_fields()?;
@@ -359,38 +241,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_bagay_fields(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
-        self.consume(
-            TokenKind::LeftBrace,
-            CompilerError::new(
-                &format!("Umaasa ng `{{` pero nakita ay `{}`", self.peek().lexeme()),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            ),
-        )?;
+        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
 
         let mut fields = Vec::new();
         while self.peek().kind() != &TokenKind::RightBrace {
             let field_id = self
-                .consume(
-                    TokenKind::Identifier,
-                    CompilerError::new(
-                        &format!("Umaasa ng maiba pero nakita ay `{}`", self.peek().lexeme()),
-                        ErrorKind::Error,
-                        self.peek().line(),
-                        self.peek().column(),
-                    ),
-                )?
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
                 .clone();
-            self.consume(
-                TokenKind::Colon,
-                CompilerError::new(
-                    &format!("Umaasa ng `:` pero nakita ay `{}`", self.peek().lexeme()),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ),
-            )?;
+            self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
             let field_type = self.parse_type()?;
 
             if self.peek().kind() == &TokenKind::Comma {
@@ -421,13 +279,7 @@ impl<'a> Parser<'a> {
 
         self.consume(
             TokenKind::SemiColon,
-            CompilerError::new(
-                &format!("Nag-asa ng `;`, pero nakita ay `{}`", self.peek().lexeme()),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )
-            .with_help("Lagyan mo ng `;`"),
+            self.expect_err("`;`").with_help("Lagyan mo ng `;`"),
         )?;
 
         Ok(Stmt::ExprS {
@@ -542,13 +394,7 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expression(0)?;
                 self.consume(
                     TokenKind::RightParen,
-                    CompilerError::new(
-                        &format!("Nag-asa ng `)`, pero nakita ay `{}`", self.peek().lexeme()),
-                        ErrorKind::Error,
-                        self.peek().line(),
-                        self.peek().column(),
-                    )
-                    .with_help("Lagyan mo ng `)`"),
+                    self.expect_err("`)`").with_help("Lagyan mo ng `)`"),
                 )?;
                 Ok(expr)
             }
@@ -560,15 +406,7 @@ impl<'a> Parser<'a> {
                     fncall: Box::new(fncall),
                 })
             }
-            _ => Err(CompilerError::new(
-                &format!(
-                    "Nag-asa ng expression, pero nakita ay `{}`",
-                    self.peek().lexeme()
-                ),
-                ErrorKind::Error,
-                self.peek().line(),
-                self.peek().column(),
-            )),
+            _ => Err(self.expect_err("expresyon")),
         }
     }
 
@@ -593,12 +431,7 @@ impl<'a> Parser<'a> {
             if self.peek().kind() == &TokenKind::Comma {
                 self.advance();
             } else if self.peek().kind() != &TokenKind::RightParen {
-                return Err(CompilerError::new(
-                    &format!("Nag-asa ng `,` o `)`, nakita ay `{}`", self.peek().lexeme()),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ));
+                return Err(self.expect_err("`,` o `)`"));
             }
         }
 
@@ -659,6 +492,20 @@ impl<'a> Parser<'a> {
         } else {
             panic!("Unexpected end of input");
         }
+    }
+
+    // Handles the "Umasa ng X pero nakita ay Y" kind of errors
+    fn expect_err(&self, expected: &str) -> CompilerError {
+        CompilerError::new(
+            &format!(
+                "Umasa ng {} pero nakita ay {}",
+                expected,
+                self.peek().lexeme()
+            ),
+            ErrorKind::Error,
+            self.peek().line(),
+            self.peek().column(),
+        )
     }
 
     fn peek(&self) -> &Token {
