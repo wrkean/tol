@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, binary_heap::PeekMut};
 
 use crate::{
     error::{CompilerError, ErrorKind},
@@ -84,6 +84,15 @@ impl<'a> SemanticAnalyzer<'a> {
             }
             Stmt::ExprS { expr, .. } => {
                 if let Err(e) = self.analyze_expression(expr) {
+                    self.has_error = true;
+                    e.display(self.source_path);
+                }
+            }
+            Stmt::Bagay {
+                bagay_identifier,
+                fields,
+            } => {
+                if let Err(e) = self.analyze_bagay(bagay_identifier, fields) {
                     self.has_error = true;
                     e.display(self.source_path);
                 }
@@ -200,6 +209,31 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         Ok(())
+    }
+
+    fn analyze_bagay(
+        &mut self,
+        bagay_identifier: &Token,
+        fields: &[(Token, TolType)],
+    ) -> Result<(), CompilerError> {
+        let bagay_symbol = Symbol::BagaySymbol {
+            name: bagay_identifier.lexeme().to_string(),
+            fields: fields.to_vec(),
+        };
+
+        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
+            Err(CompilerError::new(
+                &format!(
+                    "Ang `{}` ay na-ideklara na sa kasalukuyang sakop",
+                    bagay_identifier.lexeme()
+                ),
+                ErrorKind::Error,
+                bagay_identifier.line(),
+                bagay_identifier.column(),
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {

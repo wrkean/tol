@@ -29,4 +29,8 @@ pub enum Stmt {
         line: usize,
         column: usize,
     },
+    Bagay {
+        bagay_identifier: Token,
+        fields: Vec<(Token, TolType)>,
+    },
 }

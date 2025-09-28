@@ -82,6 +82,19 @@ impl<'a> CodeGenerator<'a> {
                 self.output.push_str(&expr_c);
                 self.output.push(';');
             }
+            Stmt::Bagay {
+                bagay_identifier,
+                fields,
+            } => {
+                let bagay_id_c = bagay_identifier.lexeme();
+                let mut fields_c = String::new();
+                for field in fields {
+                    fields_c.push_str(&format!("{} {};", field.1.as_c(), field.0.lexeme()));
+                }
+                self.output.push_str(&format!(
+                    "typedef struct {bagay_id_c}{{{fields_c}}}{bagay_id_c};"
+                ));
+            }
             Stmt::Program(_) => {}
         }
     }

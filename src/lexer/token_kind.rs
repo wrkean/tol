@@ -5,6 +5,7 @@ pub enum TokenKind {
     Ang,
     Maiba,
     Ibalik,
+    Bagay,
 
     Identifier,
 
