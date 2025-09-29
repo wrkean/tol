@@ -222,11 +222,28 @@ impl<'a> SemanticAnalyzer<'a> {
             fields: fields.to_vec(),
         };
 
-        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
-            Err(self.declared_in_scope_err(bagay_identifier))
-        } else {
-            Ok(())
+        self.enter_scope();
+        for field in fields {
+            let field_name = field.0.lexeme();
+            let field_type = &field.1;
+            if !self.declare_symbol(
+                field_name,
+                Symbol::VarSymbol {
+                    name: field_name.to_string(),
+                    tol_type: field_type.to_owned(),
+                },
+            ) {
+                return Err(self.declared_in_scope_err(&field.0));
+            }
         }
+        self.exit_scope();
+
+        // NOTE: Should this be called before entering the scope?
+        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
+            return Err(self.declared_in_scope_err(bagay_identifier));
+        }
+
+        Ok(())
     }
 
     fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
