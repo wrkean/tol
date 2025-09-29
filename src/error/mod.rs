@@ -6,8 +6,8 @@ use colored::Colorize;
 pub struct CompilerError {
     kind: ErrorKind,
     message: String,
-    note: Option<String>,
-    help: Option<String>,
+    notes: Vec<String>,
+    helps: Vec<String>,
     line: usize,
     column: usize,
 }
@@ -17,20 +17,20 @@ impl CompilerError {
         Self {
             message: message.to_string(),
             kind,
-            note: None,
-            help: None,
+            notes: Vec::new(),
+            helps: Vec::new(),
             line,
             column,
         }
     }
 
-    pub fn with_note(mut self, note: &str) -> Self {
-        self.note = Some(note.to_string());
+    pub fn add_note(mut self, note: &str) -> Self {
+        self.notes.push(note.to_string());
         self
     }
 
-    pub fn with_help(mut self, help: &str) -> Self {
-        self.help = Some(help.to_string());
+    pub fn add_help(mut self, help: &str) -> Self {
+        self.helps.push(help.to_string());
         self
     }
 
@@ -49,20 +49,20 @@ impl CompilerError {
         eprintln!(
             "  {}[{}:{}]: {}",
             match self.kind {
-                ErrorKind::Error => "error".bold().red(),
-                ErrorKind::Warning => "babala".bold().bright_yellow(),
-                ErrorKind::Info => "inpormasyon".bold().purple(),
+                ErrorKind::Error => "ERROR".bold().red(),
+                ErrorKind::Warning => "BABALA".bold().bright_yellow(),
+                ErrorKind::Info => "INPORMASYON".bold().purple(),
             },
             self.line,
             self.column,
             self.message
         );
 
-        if let Some(help) = &self.help {
-            eprintln!("  {}: {}", "tulong".bold().bright_green(), help)
+        for help in &self.helps {
+            eprintln!("  {}: {}", "tulong".bold().bright_green(), help);
         }
 
-        if let Some(note) = &self.note {
+        for note in &self.notes {
             eprintln!("  {}: {}", "tala".bold().cyan(), note);
         }
     }

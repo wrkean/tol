@@ -86,7 +86,7 @@ impl<'a> Parser<'a> {
         self.consume(
             TokenKind::LeftParen,
             self.expect_err("`(`")
-                .with_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
+                .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
         )?;
 
         while self.peek().kind() != &TokenKind::RightParen {
@@ -97,8 +97,8 @@ impl<'a> Parser<'a> {
             self.consume(
                 TokenKind::Colon,
                 self.expect_err("`:`")
-                    .with_help("Lagyan mo ng `:` dito")
-                    .with_note("Ang `:` ay ginagamit sa pag hiwalay ng tipo sa maiiba"),
+                    .add_help("Lagyan mo ng `:` dito")
+                    .add_note("Ang `:` ay ginagamit sa pag hiwalay ng tipo sa maiiba"),
             )?;
 
             let param_type = self.parse_type()?;
@@ -112,7 +112,7 @@ impl<'a> Parser<'a> {
                     self.peek().line(),
                     self.peek().column(),
                 )
-                .with_note("Ang `)` ay ginagamit sa pagsarado ng mga parameter, ang `,` naman ay ginagamit para ihiwalay ang mga parameter"));
+                .add_note("Ang `)` ay ginagamit sa pagsarado ng mga parameter, ang `,` naman ay ginagamit para ihiwalay ang mga parameter"));
             }
 
             params.push((param_identifier, param_type))
@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
                 left_brace_tok.line(),
                 left_brace_tok.column(),
             )
-            .with_help("Isarado gamit ang `}}`"));
+            .add_help("Isarado gamit ang `}}`"));
         }
 
         self.advance(); // Consumes `}`
@@ -157,7 +157,7 @@ impl<'a> Parser<'a> {
             .consume(
                 TokenKind::Ang,
                 self.expect_err("`ang`")
-                    .with_note("Ginamit ang `ang` para mag-deklara ng bagong pangalan"),
+                    .add_note("Ginamit ang `ang` para mag-deklara ng bagong pangalan"),
             )?
             .clone();
 
@@ -167,15 +167,15 @@ impl<'a> Parser<'a> {
             .consume(
                 TokenKind::Identifier,
                 self.expect_err("pangalan")
-                    .with_note("Siguraduhing hindi keyword ang iyong nailagay"),
+                    .add_note("Siguraduhing hindi keyword ang iyong nailagay"),
             )?
             .clone();
 
         self.consume(
             TokenKind::Colon,
             self.expect_err("`:`")
-                .with_help("Maglagay ng `:` dito")
-                .with_note("Ang `:` ay ginagamit sa paghiwalay ng pangalan sa tipo nito"),
+                .add_help("Maglagay ng `:` dito")
+                .add_note("Ang `:` ay ginagamit sa paghiwalay ng pangalan sa tipo nito"),
         )?;
 
         let ang_type = self.parse_type()?;
@@ -193,7 +193,7 @@ impl<'a> Parser<'a> {
 
         self.consume(
             TokenKind::SemiColon,
-            self.expect_err("`;`").with_help("Lagyan mo ng `;`"),
+            self.expect_err("`;`").add_help("Lagyan mo ng `;`"),
         )?;
 
         Ok(Stmt::Ang {
@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
 
         self.consume(
             TokenKind::SemiColon,
-            self.expect_err("`;`").with_help("Lagyan ng `;` dito"),
+            self.expect_err("`;`").add_help("Lagyan ng `;` dito"),
         )?;
 
         Ok(Stmt::Ibalik {
@@ -279,7 +279,7 @@ impl<'a> Parser<'a> {
 
         self.consume(
             TokenKind::SemiColon,
-            self.expect_err("`;`").with_help("Lagyan mo ng `;`"),
+            self.expect_err("`;`").add_help("Lagyan mo ng `;`"),
         )?;
 
         Ok(Stmt::ExprS {
@@ -394,7 +394,7 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expression(0)?;
                 self.consume(
                     TokenKind::RightParen,
-                    self.expect_err("`)`").with_help("Lagyan mo ng `)`"),
+                    self.expect_err("`)`").add_help("Lagyan mo ng `)`"),
                 )?;
                 Ok(expr)
             }
