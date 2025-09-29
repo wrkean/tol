@@ -133,7 +133,7 @@ impl<'a> Lexer<'a> {
                         self.line,
                         self.start_column,
                     )
-                    .with_help("Palitan mo ito ng `di`"));
+                    .add_help("Palitan mo ito ng `di`"));
                 }
             }
             '>' => {
@@ -172,8 +172,8 @@ impl<'a> Lexer<'a> {
                         self.line,
                         self.start_column,
                     )
-                    .with_note("Siguro ito ay hindi parte ng sintax ng Tol")
-                    .with_help("Subukan mo itong tanggalin"));
+                    .add_note("Siguro ito ay hindi parte ng sintax ng Tol")
+                    .add_help("Subukan mo itong tanggalin"));
                 }
             }
         }
@@ -269,7 +269,7 @@ impl<'a> Lexer<'a> {
                             self.line,
                             self.column,
                         )
-                        .with_help("Subukan mog maglagay ng `\"` sa huli"));
+                        .add_help("Subukan mog maglagay ng `\"` sa huli"));
                     }
                 }
                 _ => {

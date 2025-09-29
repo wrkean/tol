@@ -1,4 +1,4 @@
-use std::collections::{HashMap, binary_heap::PeekMut};
+use std::collections::{HashMap, HashSet, binary_heap::PeekMut};
 
 use crate::{
     error::{CompilerError, ErrorKind},
@@ -14,6 +14,7 @@ pub struct SemanticAnalyzer<'a> {
     symbol_table: Vec<HashMap<String, Symbol>>,
     has_error: bool,
     current_func_return_type: TolType,
+    magic_funcs: HashSet<&'static str>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -24,6 +25,7 @@ impl<'a> SemanticAnalyzer<'a> {
             symbol_table: vec![HashMap::new()],
             has_error: false,
             current_func_return_type: TolType::Unknown,
+            magic_funcs: HashSet::from(["print", "println", "exit"]),
         };
 
         // Declare magic functions first
@@ -128,15 +130,14 @@ impl<'a> SemanticAnalyzer<'a> {
         };
 
         if !self.declare_symbol(ang_identifier.lexeme(), var_symbol) {
-            return Err(CompilerError::new(
-                &format!(
-                    "`{}` ay na-ideklara na sa kasalukuyang sakop",
-                    ang_identifier.lexeme()
-                ),
-                ErrorKind::Error,
-                ang_identifier.line(),
-                ang_identifier.column(),
-            ));
+            let err = self.declared_in_scope_err(ang_identifier);
+
+            if let Some(func) = self.magic_funcs.get(ang_identifier.lexeme()) {
+                err.add_note(&format!("Ang `{func}` ay isang paraan na may 'mahika'."))
+                    .add_note("Ang paraan ay may mahika kung kilala ito ng compiler")
+            } else {
+                err
+            };
         }
 
         Ok(())
@@ -222,15 +223,7 @@ impl<'a> SemanticAnalyzer<'a> {
         };
 
         if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
-            Err(CompilerError::new(
-                &format!(
-                    "Ang `{}` ay na-ideklara na sa kasalukuyang sakop",
-                    bagay_identifier.lexeme()
-                ),
-                ErrorKind::Error,
-                bagay_identifier.line(),
-                bagay_identifier.column(),
-            ))
+            Err(self.declared_in_scope_err(bagay_identifier))
         } else {
             Ok(())
         }
@@ -415,6 +408,18 @@ impl<'a> SemanticAnalyzer<'a> {
         } else {
             false
         }
+    }
+
+    fn declared_in_scope_err(&self, name: &Token) -> CompilerError {
+        CompilerError::new(
+            &format!(
+                "Ang {} ay naideklara na sa kasalukuyang sakop",
+                name.lexeme()
+            ),
+            ErrorKind::Error,
+            name.line(),
+            name.column(),
+        )
     }
 
     fn enter_scope(&mut self) {
