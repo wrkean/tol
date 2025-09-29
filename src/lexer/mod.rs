@@ -78,6 +78,7 @@ impl<'a> Lexer<'a> {
             ':' => self.add_token(TokenKind::Colon, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
+            '.' => self.add_token(TokenKind::Dot, None),
             '@' => self.add_token(TokenKind::At, None),
             '+' => {
                 if self.match_char('=') {

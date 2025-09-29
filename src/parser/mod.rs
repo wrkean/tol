@@ -465,6 +465,7 @@ impl<'a> Parser<'a> {
         match op.kind() {
             TokenKind::Plus | TokenKind::Minus => 1,
             TokenKind::Star | TokenKind::Slash => 2,
+            TokenKind::Dot => 3,
             _ => 0,
         }
     }
