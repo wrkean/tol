@@ -414,11 +414,34 @@ impl<'a> Parser<'a> {
         let precedence = self.get_precedence(op);
         let right = self.parse_expression(precedence)?;
 
-        Ok(Expr::Binary {
-            op: op.clone(),
-            left: Box::new(left),
-            right: Box::new(right),
-        })
+        match op.kind() {
+            TokenKind::Dot => match right {
+                Expr::Identifier(tok) => Ok(Expr::MemberAccess {
+                    left: Box::new(left),
+                    member: tok,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
+                    left: Box::new(left),
+                    method: callee,
+                    args,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                _ => Err(CompilerError::new(
+                    "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
+                    ErrorKind::Error,
+                    op.line(),
+                    op.column(),
+                )),
+            },
+            _ => Ok(Expr::Binary {
+                op: op.clone(),
+                left: Box::new(left),
+                right: Box::new(right),
+            }),
+        }
     }
 
     fn parse_fncall(&mut self, callee: &Token) -> Result<Expr, CompilerError> {
