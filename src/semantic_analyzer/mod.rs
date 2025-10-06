@@ -5,13 +5,14 @@ use crate::{
     lexer::{token::Token, token_kind::TokenKind},
     parser::ast::{expr::Expr, stmt::Stmt},
     symbol::Symbol,
-    toltype::TolType,
+    toltype::{TolType, type_info::TypeInfo},
 };
 
 pub struct SemanticAnalyzer<'a> {
     ast: &'a Stmt,
     source_path: &'a str,
     symbol_table: Vec<HashMap<String, Symbol>>,
+    type_table: HashMap<TolType, TypeInfo>,
     has_error: bool,
     current_func_return_type: TolType,
     magic_funcs: HashSet<&'static str>,
@@ -23,6 +24,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ast,
             source_path,
             symbol_table: vec![HashMap::new()],
+            type_table: HashMap::new(),
             has_error: false,
             current_func_return_type: TolType::Unknown,
             magic_funcs: HashSet::from(["print", "println", "exit"]),
@@ -219,8 +221,40 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<(), CompilerError> {
         let bagay_symbol = Symbol::BagaySymbol {
             name: bagay_identifier.lexeme().to_string(),
-            fields: fields.to_vec(),
         };
+
+        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
+            return Err(self.declared_in_scope_err(bagay_identifier));
+        }
+
+        if self
+            .type_table
+            .contains_key(&TolType::Bagay(bagay_identifier.lexeme().to_string()))
+        {
+            return Err(CompilerError::new(
+                &format!(
+                    "Hindi marehistro ang `{}` dahil may ganitong tipo na",
+                    bagay_identifier.lexeme()
+                ),
+                ErrorKind::Error,
+                bagay_identifier.line(),
+                bagay_identifier.column(),
+            ));
+        } else {
+            let field_map: HashMap<_, _> = fields
+                .to_owned()
+                .into_iter()
+                .map(|field| (field.0.lexeme().to_string(), field.1))
+                .collect();
+
+            self.type_table.insert(
+                TolType::Bagay(bagay_identifier.lexeme().to_string()),
+                TypeInfo {
+                    kind: TolType::Bagay(bagay_identifier.lexeme().to_string()),
+                    fields: field_map,
+                },
+            );
+        }
 
         self.enter_scope();
         for field in fields {
@@ -237,11 +271,6 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         self.exit_scope();
-
-        // NOTE: Should this be called before entering the scope?
-        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
-            return Err(self.declared_in_scope_err(bagay_identifier));
-        }
 
         Ok(())
     }
@@ -378,6 +407,44 @@ impl<'a> SemanticAnalyzer<'a> {
                 panic!("The symbol is not declared as `par` symbol");
             }
             Expr::MagicFnCall { fncall } => self.analyze_expression(fncall),
+            Expr::FieldAccess {
+                left,
+                member,
+                line,
+                column,
+            } => {
+                let left_type = self.analyze_expression(left)?;
+
+                match self.type_table.get(&left_type) {
+                    Some(type_info) => match type_info.fields.get(member.lexeme()) {
+                        Some(toltype) => Ok(toltype.to_owned()),
+                        None => Err(CompilerError::new(
+                            &format!(
+                                "Ang `{}` ay hindi kabilamg sa `{}` na tipo",
+                                member.lexeme(),
+                                &left_type
+                            ),
+                            ErrorKind::Error,
+                            member.line(),
+                            member.column(),
+                        )),
+                    },
+                    None => {
+                        return Err(CompilerError::new(
+                            &format!("Walang miyembro ang `{}`", &left_type),
+                            ErrorKind::Error,
+                            *line,
+                            *column,
+                        ));
+                    }
+                }
+            } // Expr::MethodCall {
+              //     left,
+              //     method,
+              //     args,
+              //     line,
+              //     column,
+              // } => {}
         }
     }
 

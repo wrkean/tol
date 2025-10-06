@@ -1,7 +1,9 @@
 use core::panic;
 use std::{char::ToLowercase, fmt};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+pub mod type_info;
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TolType {
     // Integers
     // Signed

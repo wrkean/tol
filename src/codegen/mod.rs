@@ -171,6 +171,12 @@ impl<'a> CodeGenerator<'a> {
                     panic!("MagicFnCall did not contain a function call!")
                 }
             }
+            Expr::FieldAccess { left, member, .. } => {
+                let left_expr_c = self.gen_expression(left);
+                let right_member_c = member.lexeme();
+
+                format!("({left_expr_c}.{right_member_c})")
+            }
         }
     }
 }

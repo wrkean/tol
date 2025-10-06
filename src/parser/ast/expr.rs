@@ -25,19 +25,19 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
-    MemberAccess {
+    FieldAccess {
         left: Box<Expr>,
         member: Token,
         line: usize,
         column: usize,
     },
-    MethodCall {
-        left: Box<Expr>,
-        method: Token,
-        args: Vec<Expr>,
-        line: usize,
-        column: usize,
-    },
+    // MethodCall {
+    //     left: Box<Expr>,
+    //     method: Token,
+    //     args: Vec<Expr>,
+    //     line: usize,
+    //     column: usize,
+    // },
 }
 
 impl fmt::Display for Expr {

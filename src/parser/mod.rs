@@ -356,19 +356,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::Wala)
             }
-            _ => {
-                self.advance();
-                // NOTE: Error to tagalog?
-                Err(CompilerError::new(
-                    &format!(
-                        "`{}` ay hindi valid na tipo at hindi valid na simula ng isang tipo",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ))
-            }
+            _ => Ok(TolType::Unknown),
         }
     }
 
@@ -428,19 +416,19 @@ impl<'a> Parser<'a> {
 
         match op.kind() {
             TokenKind::Dot => match right {
-                Expr::Identifier(tok) => Ok(Expr::MemberAccess {
+                Expr::Identifier(tok) => Ok(Expr::FieldAccess {
                     left: Box::new(left),
                     member: tok,
                     line: op.line(),
                     column: op.column(),
                 }),
-                Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
-                    left: Box::new(left),
-                    method: callee,
-                    args,
-                    line: op.line(),
-                    column: op.column(),
-                }),
+                // Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
+                //     left: Box::new(left),
+                //     method: callee,
+                //     args,
+                //     line: op.line(),
+                //     column: op.column(),
+                // }),
                 _ => Err(CompilerError::new(
                     "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
                     ErrorKind::Error,

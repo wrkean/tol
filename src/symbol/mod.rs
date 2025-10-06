@@ -12,7 +12,6 @@ pub enum Symbol {
     },
     BagaySymbol {
         name: String,
-        fields: Vec<(Token, TolType)>,
     },
 }
 
