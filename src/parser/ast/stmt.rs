@@ -4,6 +4,7 @@ use crate::{lexer::token::Token, parser::ast::expr::Expr, toltype::TolType};
 pub enum Stmt {
     Program(Vec<Stmt>),
     Par {
+        is_static: bool,
         par_identifier: Token,
         params: Vec<(Token, TolType)>,
         return_type: TolType,

@@ -61,7 +61,8 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
-        let params = self.parse_params()?;
+        let mut is_static = true;
+        let params = self.parse_params(&mut is_static)?;
 
         let mut return_type = TolType::Wala;
         if self.peek().kind() == &TokenKind::ThinArrow {
@@ -72,6 +73,7 @@ impl<'a> Parser<'a> {
         let block = self.parse_block()?;
 
         Ok(Stmt::Par {
+            is_static,
             par_identifier,
             params,
             return_type,
@@ -81,13 +83,23 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_params(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
+    fn parse_params(
+        &mut self,
+        is_static: &mut bool,
+    ) -> Result<Vec<(Token, TolType)>, CompilerError> {
         let mut params = Vec::new();
         self.consume(
             TokenKind::LeftParen,
             self.expect_err("`(`")
                 .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
         )?;
+
+        *is_static = if self.peek().kind() == &TokenKind::Ako {
+            self.advance();
+            false
+        } else {
+            true
+        };
 
         while self.peek().kind() != &TokenKind::RightParen {
             let param_identifier = self
