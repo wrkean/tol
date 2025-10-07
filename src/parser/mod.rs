@@ -432,6 +432,7 @@ impl<'a> Parser<'a> {
                     line: op.line(),
                     column: op.column(),
                 }),
+                // TODO: MethodCall
                 // Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
                 //     left: Box::new(left),
                 //     method: callee,
@@ -441,6 +442,21 @@ impl<'a> Parser<'a> {
                 // }),
                 _ => Err(CompilerError::new(
                     "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
+                    ErrorKind::Error,
+                    op.line(),
+                    op.column(),
+                )),
+            },
+            TokenKind::ColonColon => match right {
+                Expr::Identifier(tok) => Ok(Expr::StaticFieldAccess {
+                    left: Box::new(left),
+                    field: tok,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                // TODO: StaticMethodCall
+                _ => Err(CompilerError::new(
+                    "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
                     ErrorKind::Error,
                     op.line(),
                     op.column(),
@@ -498,7 +514,7 @@ impl<'a> Parser<'a> {
         match op.kind() {
             TokenKind::Plus | TokenKind::Minus => 1,
             TokenKind::Star | TokenKind::Slash => 2,
-            TokenKind::Dot => 3,
+            TokenKind::Dot | TokenKind::ColonColon => 3,
             _ => 0,
         }
     }
