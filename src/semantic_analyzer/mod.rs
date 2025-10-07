@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, binary_heap::PeekMut};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use crate::{
     error::{CompilerError, ErrorKind},
@@ -113,8 +113,14 @@ impl<'a> SemanticAnalyzer<'a> {
         line: &usize,
         column: &usize,
     ) -> Result<(), CompilerError> {
+        let ang_type = if let TolType::UnknownIdentifier(id) = ang_type {
+            self.resolve_type(id, *line, *column)?
+        } else {
+            ang_type.clone()
+        };
+
         let rhs_type = self.analyze_expression(rhs)?;
-        if !rhs_type.is_assignment_compatible(ang_type) {
+        if !rhs_type.is_assignment_compatible(&ang_type) {
             return Err(CompilerError::new(
                 &format!(
                     "Ang tipong `{}` ay hindi pwede ilagay sa `{}`",
@@ -128,7 +134,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
         let var_symbol = Symbol::VarSymbol {
             name: ang_identifier.lexeme().to_string(),
-            tol_type: (*ang_type).clone(),
+            tol_type: ang_type.clone(),
         };
 
         if !self.declare_symbol(ang_identifier.lexeme(), var_symbol) {
@@ -145,6 +151,18 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
+    fn resolve_type(&self, id: &str, line: usize, column: usize) -> Result<TolType, CompilerError> {
+        self.type_table
+            .get(&TolType::UnknownIdentifier(id.to_string()))
+            .map(|t| t.kind.clone())
+            .ok_or(CompilerError::new(
+                &format!("Hindi valid na tipo ang `{}`", id),
+                ErrorKind::Error,
+                line,
+                column,
+            ))
+    }
+
     fn analyze_par(
         &mut self,
         par_identifier: &Token,
@@ -156,11 +174,31 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<(), CompilerError> {
         self.enter_scope();
 
-        let param_types: Vec<TolType> = params.iter().map(|tup| tup.1.clone()).collect();
+        // Resolve types
+        let resolved_params: Vec<_> = params
+            .iter()
+            .map(|(tok, ty)| {
+                let resolved_ty = if let TolType::UnknownIdentifier(id) = ty {
+                    self.resolve_type(id, tok.line(), tok.column())?
+                } else {
+                    ty.clone()
+                };
+
+                Ok((tok.clone(), resolved_ty))
+            })
+            .collect::<Result<_, CompilerError>>()?;
+
+        let resolved_return = if let TolType::UnknownIdentifier(id) = return_type {
+            self.resolve_type(id, par_identifier.line(), par_identifier.column())?
+        } else {
+            return_type.clone()
+        };
+
+        let param_types: Vec<TolType> = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
         let par_symbol = Symbol::ParSymbol {
             name: par_identifier.lexeme().to_string(),
             param_types,
-            return_type: return_type.to_owned(),
+            return_type: resolved_return.clone(),
         };
 
         if !self.declare_symbol(par_identifier.lexeme(), par_symbol) {
@@ -175,7 +213,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
-        self.current_func_return_type = return_type.to_owned();
+        self.current_func_return_type = resolved_return.to_owned();
         self.analyze_expression(block)?;
 
         self.exit_scope();
@@ -214,63 +252,102 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn analyze_bagay(
+    pub fn analyze_bagay(
         &mut self,
         bagay_identifier: &Token,
         fields: &[(Token, TolType)],
     ) -> Result<(), CompilerError> {
-        let bagay_symbol = Symbol::BagaySymbol {
-            name: bagay_identifier.lexeme().to_string(),
-        };
+        let bagay_name = bagay_identifier.lexeme();
+        let bagay_type = TolType::Bagay(bagay_name.to_string());
 
-        if !self.declare_symbol(bagay_identifier.lexeme(), bagay_symbol) {
+        let bagay_symbol = Symbol::BagaySymbol {
+            name: bagay_name.to_string(),
+        };
+        if !self.declare_symbol(bagay_name, bagay_symbol) {
             return Err(self.declared_in_scope_err(bagay_identifier));
         }
 
-        if self
-            .type_table
-            .contains_key(&TolType::Bagay(bagay_identifier.lexeme().to_string()))
-        {
-            return Err(CompilerError::new(
-                &format!(
-                    "Hindi marehistro ang `{}` dahil may ganitong tipo na",
-                    bagay_identifier.lexeme()
-                ),
-                ErrorKind::Error,
-                bagay_identifier.line(),
-                bagay_identifier.column(),
-            ));
-        } else {
-            let field_map: HashMap<_, _> = fields
-                .to_owned()
-                .into_iter()
-                .map(|field| (field.0.lexeme().to_string(), field.1))
-                .collect();
-
-            self.type_table.insert(
-                TolType::Bagay(bagay_identifier.lexeme().to_string()),
-                TypeInfo {
-                    kind: TolType::Bagay(bagay_identifier.lexeme().to_string()),
-                    fields: field_map,
-                },
-            );
+        // Forward declare the type in the type table, this
+        // allows fields to have indirect recursive types
+        match self.type_table.entry(bagay_type.clone()) {
+            Entry::Occupied(_) => {
+                return Err(CompilerError::new(
+                    &format!(
+                        "Hindi marehistro ang `{}` dahil may ganitong tipo na",
+                        bagay_name
+                    ),
+                    ErrorKind::Error,
+                    bagay_identifier.line(),
+                    bagay_identifier.column(),
+                ));
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(TypeInfo {
+                    kind: bagay_type.clone(),
+                    fields: HashMap::new(), // Empty for now
+                });
+            }
         }
 
+        let resolved_fields: Vec<_> = fields
+            .iter()
+            .map(|(tok, ty)| {
+                let resolved_ty = if let TolType::UnknownIdentifier(id) = ty {
+                    self.resolve_type(id, tok.line(), tok.column())?
+                } else {
+                    ty.clone()
+                };
+                Ok((tok.clone(), resolved_ty))
+            })
+            .collect::<Result<_, CompilerError>>()?;
+
         self.enter_scope();
-        for field in fields {
-            let field_name = field.0.lexeme();
-            let field_type = &field.1;
+        for (tok, ty) in &resolved_fields {
             if !self.declare_symbol(
-                field_name,
+                tok.lexeme(),
                 Symbol::VarSymbol {
-                    name: field_name.to_string(),
-                    tol_type: field_type.to_owned(),
+                    name: tok.lexeme().to_string(),
+                    tol_type: ty.clone(),
                 },
             ) {
-                return Err(self.declared_in_scope_err(&field.0));
+                self.exit_scope();
+                return Err(self.declared_in_scope_err(tok));
             }
         }
         self.exit_scope();
+
+        let mut field_map = HashMap::new();
+        for (tok, ty) in &resolved_fields {
+            let field_name = tok.lexeme().to_string();
+
+            if field_map.contains_key(&field_name) {
+                return Err(CompilerError::new(
+                    &format!("Duplicate field `{}` in `{}`", field_name, bagay_name),
+                    ErrorKind::Error,
+                    tok.line(),
+                    tok.column(),
+                ));
+            }
+
+            if matches!(ty, TolType::Bagay(name) if name == bagay_name) {
+                return Err(CompilerError::new(
+                    &format!(
+                        "Ang `{}` ay hindi maaaring maglaman ng sarili nito nang direkta",
+                        bagay_name
+                    ),
+                    ErrorKind::Error,
+                    tok.line(),
+                    tok.column(),
+                ));
+            }
+
+            field_map.insert(field_name, ty.clone());
+        }
+
+        // Fill in the previously forward-declared entry
+        if let Some(type_info) = self.type_table.get_mut(&bagay_type) {
+            type_info.fields = field_map;
+        }
 
         Ok(())
     }
@@ -429,14 +506,12 @@ impl<'a> SemanticAnalyzer<'a> {
                             member.column(),
                         )),
                     },
-                    None => {
-                        return Err(CompilerError::new(
-                            &format!("Walang miyembro ang `{}`", &left_type),
-                            ErrorKind::Error,
-                            *line,
-                            *column,
-                        ));
-                    }
+                    None => Err(CompilerError::new(
+                        &format!("Walang miyembro ang `{}`", &left_type),
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )),
                 }
             } // Expr::MethodCall {
               //     left,
@@ -449,27 +524,36 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn declare_magic_funcs(&mut self) {
-        let print_symbol = Symbol::ParSymbol {
-            name: "print".to_string(),
-            param_types: vec![TolType::Sinulid],
-            return_type: TolType::Wala,
-        };
+        let magic_symbols = vec![
+            (
+                "print",
+                Symbol::ParSymbol {
+                    name: "print".to_string(),
+                    param_types: vec![TolType::Sinulid],
+                    return_type: TolType::Wala,
+                },
+            ),
+            (
+                "println",
+                Symbol::ParSymbol {
+                    name: "println".to_string(),
+                    param_types: vec![TolType::Sinulid],
+                    return_type: TolType::Wala,
+                },
+            ),
+            (
+                "alis",
+                Symbol::ParSymbol {
+                    name: "alis".to_string(),
+                    param_types: vec![TolType::I32],
+                    return_type: TolType::Wala,
+                },
+            ),
+        ];
 
-        let println_symbol = Symbol::ParSymbol {
-            name: "println".to_string(),
-            param_types: vec![TolType::Sinulid],
-            return_type: TolType::Wala,
-        };
-
-        let exit_symbol = Symbol::ParSymbol {
-            name: "exit".to_string(),
-            param_types: vec![TolType::I32],
-            return_type: TolType::Wala,
-        };
-
-        self.declare_symbol("print", print_symbol);
-        self.declare_symbol("println", println_symbol);
-        self.declare_symbol("exit", exit_symbol);
+        for (name, sym) in magic_symbols {
+            self.declare_symbol(name, sym);
+        }
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {

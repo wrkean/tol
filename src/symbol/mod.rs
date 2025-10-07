@@ -1,5 +1,6 @@
-use crate::{lexer::token::Token, toltype::TolType};
+use crate::toltype::TolType;
 
+// FIXME: Varianrs have the same postfix warning. Not a problem for now
 pub enum Symbol {
     VarSymbol {
         name: String,

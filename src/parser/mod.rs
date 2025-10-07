@@ -320,6 +320,10 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::I64)
             }
+            "isukat" => {
+                self.advance();
+                Ok(TolType::ISukat)
+            }
             "u8" => {
                 self.advance();
                 Ok(TolType::U8)
@@ -335,6 +339,10 @@ impl<'a> Parser<'a> {
             "u64" => {
                 self.advance();
                 Ok(TolType::U64)
+            }
+            "usukat" => {
+                self.advance();
+                Ok(TolType::USukat)
             }
             "lutang" => {
                 self.advance();
@@ -356,7 +364,9 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::Wala)
             }
-            _ => Ok(TolType::Unknown),
+            _ => Ok(TolType::UnknownIdentifier(
+                self.advance().lexeme().to_string(),
+            )),
         }
     }
 

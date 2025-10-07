@@ -1,5 +1,5 @@
 use core::panic;
-use std::{char::ToLowercase, fmt};
+use std::fmt;
 
 pub mod type_info;
 
@@ -38,6 +38,7 @@ pub enum TolType {
 
     // Composite
     Bagay(String),
+    UnknownIdentifier(String),
 
     Unknown,
 }
