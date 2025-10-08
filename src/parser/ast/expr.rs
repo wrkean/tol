@@ -36,13 +36,21 @@ pub enum Expr {
         field: Token,
         line: usize,
         column: usize,
-    }, // MethodCall {
-       //     left: Box<Expr>,
-       //     method: Token,
-       //     args: Vec<Expr>,
-       //     line: usize,
-       //     column: usize,
-       // },
+    },
+    MethodCall {
+        left: Box<Expr>,
+        callee: Token,
+        args: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
+    StaticMethodCall {
+        left: Box<Expr>,
+        callee: Token,
+        args: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
 }
 
 impl fmt::Display for Expr {

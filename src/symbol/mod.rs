@@ -11,6 +11,12 @@ pub enum Symbol {
         param_types: Vec<TolType>,
         return_type: TolType,
     },
+    MetSymbol {
+        is_static: bool,
+        name: String,
+        param_types: Vec<TolType>,
+        return_type: TolType,
+    },
     BagaySymbol {
         name: String,
     },
@@ -22,6 +28,7 @@ impl Symbol {
             Symbol::VarSymbol { tol_type, .. } => tol_type.to_owned(),
             Symbol::ParSymbol { return_type, .. } => return_type.to_owned(),
             Symbol::BagaySymbol { name, .. } => TolType::Bagay(name.to_owned()),
+            Symbol::MetSymbol { return_type, .. } => return_type.to_owned(),
         }
     }
 }

@@ -4,8 +4,16 @@ use crate::{lexer::token::Token, parser::ast::expr::Expr, toltype::TolType};
 pub enum Stmt {
     Program(Vec<Stmt>),
     Par {
-        is_static: bool,
         par_identifier: Token,
+        params: Vec<(Token, TolType)>,
+        return_type: TolType,
+        block: Expr,
+        line: usize,
+        column: usize,
+    },
+    Method {
+        is_static: bool,
+        met_identifier: Token,
         params: Vec<(Token, TolType)>,
         return_type: TolType,
         block: Expr,
@@ -33,5 +41,16 @@ pub enum Stmt {
     Bagay {
         bagay_identifier: Token,
         fields: Vec<(Token, TolType)>,
+    },
+    Itupad {
+        itupad_for: TolType,
+        itupad_block: Box<Stmt>,
+        line: usize,
+        column: usize,
+    },
+    ItupadBlock {
+        methods: Vec<Stmt>,
+        line: usize,
+        column: usize,
     },
 }

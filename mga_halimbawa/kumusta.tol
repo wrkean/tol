@@ -4,7 +4,6 @@ bagay Tao {
 }
 
 paraan una() {
-    ang numero: i32 = 10;
     @println("Kumusta mundo");
     @alis(1);
 }

@@ -1,3 +1,5 @@
+use std::collections::linked_list;
+
 use crate::{
     lexer::token::Token,
     parser::ast::{expr::Expr, stmt::Stmt},
@@ -95,7 +97,22 @@ impl<'a> CodeGenerator<'a> {
                     "typedef struct {bagay_id_c}{{{fields_c}}}{bagay_id_c};"
                 ));
             }
+            Stmt::Method {
+                met_identifier,
+                params,
+                return_type,
+                block,
+                ..
+            } => {
+                let type_c = return_type.as_c();
+                let id_c = met_identifier.lexeme();
+                let params_c = self.gen_params(params);
+                let met_c = format!("{type_c} {id_c}{params_c}");
+                self.output.push_str(&met_c);
+                self.gen_expression(block);
+            }
             Stmt::Program(_) => {}
+            _ => {}
         }
     }
 
@@ -177,6 +194,22 @@ impl<'a> CodeGenerator<'a> {
 
                 format!("({left_expr_c}.{right_member_c})")
             }
+            Expr::MethodCall {
+                left, callee, args, ..
+            } => {
+                let mut args_str_c = String::from("(");
+                args_str_c.push_str(&self.gen_expression(left));
+                for arg in args {
+                    args_str_c.push_str(&self.gen_expression(arg));
+                    if arg != args.last().unwrap() {
+                        args_str_c.push_str(", ");
+                    }
+                }
+                args_str_c.push(')');
+
+                format!("{}{}", callee.lexeme(), args_str_c)
+            }
+            _ => String::from("Wala"),
         }
     }
 }

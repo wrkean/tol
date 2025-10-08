@@ -7,6 +7,7 @@ pub enum TokenKind {
     Ibalik,
     Bagay,
     Ako,
+    Itupad,
 
     Identifier,
 

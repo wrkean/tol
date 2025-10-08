@@ -48,6 +48,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ang => self.parse_ang(),
             TokenKind::Ibalik => self.parse_ibalik(),
             TokenKind::Bagay => self.parse_bagay(),
+            TokenKind::Itupad => self.parse_itupad(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -61,8 +62,13 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
-        let mut is_static = true;
-        let params = self.parse_params(&mut is_static)?;
+        self.consume(
+            TokenKind::LeftParen,
+            self.expect_err("`(`")
+                .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
+        )?;
+        let params = self.parse_params()?;
+        self.advance(); // Consumes `}`
 
         let mut return_type = TolType::Wala;
         if self.peek().kind() == &TokenKind::ThinArrow {
@@ -73,7 +79,6 @@ impl<'a> Parser<'a> {
         let block = self.parse_block()?;
 
         Ok(Stmt::Par {
-            is_static,
             par_identifier,
             params,
             return_type,
@@ -83,23 +88,16 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_params(
-        &mut self,
-        is_static: &mut bool,
-    ) -> Result<Vec<(Token, TolType)>, CompilerError> {
+    fn parse_params(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
         let mut params = Vec::new();
-        self.consume(
-            TokenKind::LeftParen,
-            self.expect_err("`(`")
-                .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
-        )?;
 
-        *is_static = if self.peek().kind() == &TokenKind::Ako {
+        if self.peek().kind() == &TokenKind::Ako {
+            params.push((self.advance().clone(), TolType::AkoType));
+        }
+
+        if self.peek().kind() == &TokenKind::Comma {
             self.advance();
-            false
-        } else {
-            true
-        };
+        }
 
         while self.peek().kind() != &TokenKind::RightParen {
             let param_identifier = self
@@ -129,8 +127,6 @@ impl<'a> Parser<'a> {
 
             params.push((param_identifier, param_type))
         }
-
-        self.advance(); // Consumes `)`
 
         Ok(params)
     }
@@ -285,6 +281,83 @@ impl<'a> Parser<'a> {
         Ok(fields)
     }
 
+    fn parse_itupad(&mut self) -> Result<Stmt, CompilerError> {
+        let itupad_tok = self
+            .consume(TokenKind::Itupad, self.expect_err("`itupad`"))?
+            .clone();
+
+        let itupad_for = self.parse_type()?;
+
+        let itupad_block = self.parse_itupad_block()?;
+
+        Ok(Stmt::Itupad {
+            itupad_for,
+            itupad_block: Box::new(itupad_block),
+            line: itupad_tok.line(),
+            column: itupad_tok.column(),
+        })
+    }
+
+    fn parse_itupad_block(&mut self) -> Result<Stmt, CompilerError> {
+        let lb_tok = self
+            .consume(TokenKind::LeftBrace, self.expect_err("`{`"))?
+            .clone();
+
+        let mut methods = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            methods.push(self.parse_method()?);
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(self
+                    .expect_err("`,` o `}`")
+                    .add_help("Baka nakalimutan mo isarado ang `}`"));
+            }
+        }
+
+        self.advance(); // Consumes `}`
+
+        Ok(Stmt::ItupadBlock {
+            methods,
+            line: lb_tok.line(),
+            column: lb_tok.column(),
+        })
+    }
+
+    fn parse_method(&mut self) -> Result<Stmt, CompilerError> {
+        let par_tok = self
+            .consume(TokenKind::Paraan, self.expect_err("`paraan`"))?
+            .clone();
+
+        let met_identifier = self
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+            .clone();
+
+        self.consume(TokenKind::LeftParen, self.expect_err("`(`"));
+        let is_static = self.peek().kind() != &TokenKind::Ako;
+        let params = self.parse_params()?;
+        self.advance(); // Consumes `)`
+
+        let mut return_type = TolType::Wala;
+        if self.peek().kind() == &TokenKind::ThinArrow {
+            self.advance();
+            return_type = self.parse_type()?;
+        }
+
+        let block = self.parse_block()?;
+
+        Ok(Stmt::Method {
+            is_static,
+            met_identifier,
+            params,
+            return_type,
+            block,
+            line: par_tok.line(),
+            column: par_tok.column(),
+        })
+    }
+
     fn parse_expr_stmt(&mut self) -> Result<Stmt, CompilerError> {
         let start_tok = self.peek().clone();
         let expr = self.parse_expression(0)?;
@@ -433,13 +506,13 @@ impl<'a> Parser<'a> {
                     column: op.column(),
                 }),
                 // TODO: MethodCall
-                // Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
-                //     left: Box::new(left),
-                //     method: callee,
-                //     args,
-                //     line: op.line(),
-                //     column: op.column(),
-                // }),
+                Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
+                    left: Box::new(left),
+                    callee,
+                    args,
+                    line: op.line(),
+                    column: op.column(),
+                }),
                 _ => Err(CompilerError::new(
                     "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
                     ErrorKind::Error,
@@ -455,6 +528,13 @@ impl<'a> Parser<'a> {
                     column: op.column(),
                 }),
                 // TODO: StaticMethodCall
+                Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
+                    left: Box::new(left),
+                    callee,
+                    args,
+                    line: op.line(),
+                    column: op.column(),
+                }),
                 _ => Err(CompilerError::new(
                     "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
                     ErrorKind::Error,

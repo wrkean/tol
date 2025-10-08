@@ -40,6 +40,8 @@ pub enum TolType {
     Bagay(String),
     UnknownIdentifier(String),
 
+    // Special
+    AkoType,
     Unknown,
 }
 

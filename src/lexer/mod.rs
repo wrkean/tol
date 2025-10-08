@@ -30,6 +30,7 @@ impl<'a> Lexer<'a> {
             ("ibalik", TokenKind::Ibalik),
             ("bagay", TokenKind::Bagay),
             ("ako", TokenKind::Ako),
+            ("itupad", TokenKind::Itupad),
         ]);
         Self {
             source,
