@@ -164,6 +164,7 @@ impl<'a> SemanticAnalyzer<'a> {
         println!("{}", ang_type);
 
         let rhs_type = self.analyze_expression(rhs)?;
+        println!("{:?}, {:?}", rhs_type, ang_type);
         if !rhs_type.is_assignment_compatible(&ang_type) {
             return Err(CompilerError::new(
                 &format!(
@@ -728,9 +729,19 @@ impl<'a> SemanticAnalyzer<'a> {
                             if let Symbol::MetSymbol {
                                 param_types,
                                 return_type,
+                                is_static,
                                 ..
                             } = met_sym
                             {
+                                if *is_static {
+                                    return Err(CompilerError::new(
+                                        &format!("{} ay isang static na paraan!", callee.lexeme()),
+                                        ErrorKind::Error,
+                                        callee.line(),
+                                        callee.column(),
+                                    ));
+                                }
+
                                 if let Err(e) = Self::check_call(&arg_types, param_types) {
                                     return Err(CompilerError::new(
                                         e,
@@ -758,6 +769,82 @@ impl<'a> SemanticAnalyzer<'a> {
                     },
                     None => Err(CompilerError::new(
                         &format!("Walang miyembro ang `{}`", &left_type),
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )),
+                }
+            }
+            // Expr::StaticFieldAccess {
+            //     left,
+            //     field,
+            //     line,
+            //     column,
+            // } => {
+            //
+            // }
+            Expr::StaticMethodCall {
+                left,
+                callee,
+                args,
+                line,
+                column,
+            } => {
+                let left_type = self.analyze_expression(left)?;
+                let mut arg_types = Vec::new();
+                for arg in args {
+                    arg_types.push(self.analyze_expression(arg)?);
+                }
+
+                match self.type_table.get(&left_type) {
+                    Some(type_info) => match type_info.methods.get(callee.lexeme()) {
+                        Some(met_sym) => {
+                            if let Symbol::MetSymbol {
+                                is_static,
+                                param_types,
+                                return_type,
+                                ..
+                            } = met_sym
+                            {
+                                if !is_static {
+                                    return Err(CompilerError::new(
+                                        &format!(
+                                            "{} ay hindi isang static na paraan",
+                                            callee.lexeme()
+                                        ),
+                                        ErrorKind::Error,
+                                        callee.line(),
+                                        callee.column(),
+                                    ));
+                                }
+
+                                if let Err(e) = Self::check_call(&arg_types, param_types) {
+                                    return Err(CompilerError::new(
+                                        e,
+                                        ErrorKind::Error,
+                                        *line,
+                                        *column,
+                                    ));
+                                }
+
+                                Ok(return_type.clone())
+                            } else {
+                                unreachable!("met_sym is not a MetSymbol");
+                            }
+                        }
+                        None => Err(CompilerError::new(
+                            &format!(
+                                "Walang method na `{}` ang `{}` na tipo",
+                                callee.lexeme(),
+                                &left_type
+                            ),
+                            ErrorKind::Error,
+                            *line,
+                            *column,
+                        )),
+                    },
+                    None => Err(CompilerError::new(
+                        &format!("Hindi rehistrado ang tipong {}", &left_type),
                         ErrorKind::Error,
                         *line,
                         *column,

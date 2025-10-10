@@ -306,14 +306,6 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         while self.peek().kind() != &TokenKind::RightBrace {
             methods.push(self.parse_method()?);
-
-            if self.peek().kind() == &TokenKind::Comma {
-                self.advance();
-            } else if self.peek().kind() != &TokenKind::RightBrace {
-                return Err(self
-                    .expect_err("`,` o `}`")
-                    .add_help("Baka nakalimutan mo isarado ang `}`"));
-            }
         }
 
         self.advance(); // Consumes `}`

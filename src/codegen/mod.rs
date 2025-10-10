@@ -234,6 +234,18 @@ impl<'a> CodeGenerator<'a> {
 
                 format!("{}{}", callee.lexeme(), args_str_c)
             }
+            Expr::StaticMethodCall { callee, args, .. } => {
+                let mut args_str_c = String::from("(");
+                for arg in args {
+                    args_str_c.push_str(&self.gen_expression(arg));
+                    if arg != args.last().unwrap() {
+                        args_str_c.push_str(", ");
+                    }
+                }
+                args_str_c.push(')');
+
+                format!("{}{}", callee.lexeme(), args_str_c)
+            }
             Expr::Struct { name, fields } => {
                 let struct_name_c = name.lexeme();
                 let mut struct_block_c = String::from("{");

@@ -7,6 +7,12 @@ itupad Tao {
     paraan get_tuig(ako) -> u32 {
         ibalik ako.tuig;
     }
+
+    paraan bago() -> Tao {
+        ibalik Tao {
+            edad: 8, tuig: 12
+        };
+    }
 }
 
 bagay Hayop {
@@ -17,6 +23,7 @@ paraan una() {
     ang tao: Tao = Tao {edad: 8, tuig: 9};
     ang edad: i32 = tao.edad;
     ang tuig: u32 = tao.get_tuig();
+    ang bagong_tao: Tao = tao::bago();
 
     @println("Kumusta mundo");
     @alis(1);
