@@ -51,6 +51,10 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    Struct {
+        name: Token,
+        fields: Vec<(Token, Expr)>,
+    },
 }
 
 impl fmt::Display for Expr {

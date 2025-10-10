@@ -1,6 +1,7 @@
 use crate::toltype::TolType;
 
 // FIXME: Varianrs have the same postfix warning. Not a problem for now
+#[derive(Debug, Clone)]
 pub enum Symbol {
     VarSymbol {
         name: String,

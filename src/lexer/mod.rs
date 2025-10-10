@@ -29,7 +29,6 @@ impl<'a> Lexer<'a> {
             ("maiba", TokenKind::Maiba),
             ("ibalik", TokenKind::Ibalik),
             ("bagay", TokenKind::Bagay),
-            ("ako", TokenKind::Ako),
             ("itupad", TokenKind::Itupad),
         ]);
         Self {
@@ -159,7 +158,7 @@ impl<'a> Lexer<'a> {
                     self.add_token(TokenKind::Lesser, None);
                 }
             }
-            c if c.is_whitespace() => {
+            c if c.is_whitespace() && c != '\n' => {
                 self.skip_whitespace();
             }
             '\n' => {

@@ -69,9 +69,9 @@ impl<'a> CodeGenerator<'a> {
                     "una" => "__TOL_main__",
                     _ => id_c,
                 };
-                let params_c = self.gen_params(params);
+                let params_c = self.gen_params(params, None);
 
-                let par_c = format!("{type_c} {id_c}{params_c} ");
+                let par_c = format!("{type_c} {id_c}{params_c}");
                 self.output.push_str(&par_c);
                 self.gen_expression(block);
             }
@@ -97,31 +97,57 @@ impl<'a> CodeGenerator<'a> {
                     "typedef struct {bagay_id_c}{{{fields_c}}}{bagay_id_c};"
                 ));
             }
-            Stmt::Method {
-                met_identifier,
-                params,
-                return_type,
-                block,
+            Stmt::Itupad {
+                itupad_for,
+                itupad_block,
                 ..
             } => {
-                let type_c = return_type.as_c();
-                let id_c = met_identifier.lexeme();
-                let params_c = self.gen_params(params);
-                let met_c = format!("{type_c} {id_c}{params_c}");
-                self.output.push_str(&met_c);
-                self.gen_expression(block);
+                if let Stmt::ItupadBlock { methods, .. } = &**itupad_block {
+                    for method in methods {
+                        self.gen_method(method, itupad_for);
+                    }
+                }
             }
             Stmt::Program(_) => {}
             _ => {}
         }
     }
 
-    fn gen_params(&self, params: &[(Token, TolType)]) -> String {
+    fn gen_method(&mut self, method: &Stmt, itupad_for: &TolType) {
+        if let Stmt::Method {
+            is_static,
+            met_identifier,
+            params,
+            return_type,
+            block,
+            line,
+            column,
+        } = method
+        {
+            let type_c = return_type.as_c();
+            let id_c = met_identifier.lexeme();
+            let params_c = self.gen_params(params, Some(itupad_for));
+
+            self.output.push_str(&format!("{type_c} {id_c}{params_c}"));
+            self.gen_expression(block);
+        } else {
+            unreachable!("Stmt is not a method");
+        }
+    }
+
+    fn gen_params(&self, params: &[(Token, TolType)], itupad_for: Option<&TolType>) -> String {
         let mut c_params = String::from("(");
-        for param in params {
-            c_params += &format!("{} {}", param.1.as_c(), param.0.lexeme());
-            if param != params.last().unwrap() {
-                c_params += ", ";
+        for (param_name, param_type) in params {
+            if let TolType::AkoType = param_type {
+                if let Some(t) = itupad_for {
+                    c_params.push_str(&format!("{} {}", t.as_c(), param_name.lexeme()));
+                }
+            } else {
+                c_params.push_str(&format!("{} {}", param_type.as_c(), param_name.lexeme()));
+            }
+
+            if param_name.lexeme() != params.last().unwrap().0.lexeme() {
+                c_params.push(',');
             }
         }
         c_params += ")";
@@ -147,12 +173,11 @@ impl<'a> CodeGenerator<'a> {
             }
             Expr::Block { statements, .. } => {
                 self.output.push('{');
-
                 for statement in statements {
                     self.gen_statement(statement);
                 }
-
                 self.output.push('}');
+
                 String::from("")
             }
             Expr::FnCall { callee, args } => {
@@ -208,6 +233,25 @@ impl<'a> CodeGenerator<'a> {
                 args_str_c.push(')');
 
                 format!("{}{}", callee.lexeme(), args_str_c)
+            }
+            Expr::Struct { name, fields } => {
+                let struct_name_c = name.lexeme();
+                let mut struct_block_c = String::from("{");
+                for (i, (field_name, field_expr)) in fields.iter().enumerate() {
+                    struct_block_c.push_str(&format!(
+                        ".{}={}",
+                        field_name.lexeme(),
+                        self.gen_expression(field_expr)
+                    ));
+
+                    let is_last = i == fields.len() - 1;
+                    if !is_last {
+                        struct_block_c.push(',');
+                    }
+                }
+                struct_block_c.push('}');
+
+                format!("(struct {}){}", struct_name_c, struct_block_c)
             }
             _ => String::from("Wala"),
         }

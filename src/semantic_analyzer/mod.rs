@@ -1,14 +1,11 @@
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry, linked_list};
 
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
     parser::ast::{expr::Expr, stmt::Stmt},
     symbol::Symbol,
-    toltype::{
-        TolType,
-        type_info::{MethodInfo, TypeInfo},
-    },
+    toltype::{TolType, type_info::TypeInfo},
 };
 
 pub struct SemanticAnalyzer<'a> {
@@ -49,9 +46,26 @@ impl<'a> SemanticAnalyzer<'a> {
             _ => panic!("ast did not start with a program node"),
         };
 
-        for statement in statements {
-            self.analyze_stmt(statement);
+        // First pass: collect type declarations
+        for stmt in statements.iter() {
+            if let Stmt::Bagay {
+                bagay_identifier,
+                fields,
+            } = stmt
+            {
+                self.analyze_bagay(bagay_identifier, fields)
+                    .unwrap_or_else(|e| e.display(self.source_path));
+            }
         }
+
+        // Second pass: analyze everything else
+        for stmt in statements.iter() {
+            if !matches!(stmt, Stmt::Bagay { .. }) {
+                self.analyze_stmt(stmt);
+            }
+        }
+
+        println!("{:?}", self.type_table.keys());
     }
 
     fn analyze_stmt(&mut self, stmt: &Stmt) {
@@ -147,6 +161,7 @@ impl<'a> SemanticAnalyzer<'a> {
         } else {
             ang_type.clone()
         };
+        println!("{}", ang_type);
 
         let rhs_type = self.analyze_expression(rhs)?;
         if !rhs_type.is_assignment_compatible(&ang_type) {
@@ -182,7 +197,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn resolve_type(&self, id: &str, line: usize, column: usize) -> Result<TolType, CompilerError> {
         self.type_table
-            .get(&TolType::UnknownIdentifier(id.to_string()))
+            .get(&TolType::Bagay(id.to_string()))
             .map(|t| t.kind.clone())
             .ok_or(CompilerError::new(
                 &format!("Hindi valid na tipo ang `{}`", id),
@@ -201,8 +216,6 @@ impl<'a> SemanticAnalyzer<'a> {
         // line: &usize,
         // column: &usize,
     ) -> Result<(), CompilerError> {
-        self.enter_scope();
-
         // Resolve types
         let resolved_params: Vec<_> = params
             .iter()
@@ -224,6 +237,7 @@ impl<'a> SemanticAnalyzer<'a> {
         };
 
         let param_types: Vec<TolType> = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
+
         let par_symbol = Symbol::ParSymbol {
             name: par_identifier.lexeme().to_string(),
             param_types,
@@ -242,10 +256,22 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
-        self.current_func_return_type = resolved_return.to_owned();
-        self.analyze_expression(block)?;
+        self.enter_scope();
+        for (tok, ty) in &resolved_params {
+            let param_symbol = Symbol::VarSymbol {
+                name: tok.lexeme().to_string(),
+                tol_type: ty.clone(),
+            };
 
+            if !self.declare_symbol(tok.lexeme(), param_symbol) {
+                return Err(self.declared_in_scope_err(tok));
+            }
+        }
+
+        self.current_func_return_type = resolved_return.clone();
+        self.analyze_expression(block)?;
         self.exit_scope();
+
         Ok(())
     }
 
@@ -389,71 +415,68 @@ impl<'a> SemanticAnalyzer<'a> {
         line: usize,
         column: usize,
     ) -> Result<(), CompilerError> {
-        let methods = if let Stmt::ItupadBlock { methods, .. } = itupad_block {
-            methods
+        self.enter_scope();
+        let itupad_for = if let TolType::UnknownIdentifier(id) = itupad_for {
+            self.resolve_type(id, line, column)?
         } else {
-            unreachable!("Its not a itupad block");
+            itupad_for.clone()
         };
 
         let mut analyzed_methods = Vec::new();
-        for method in methods {
-            if let Stmt::Method {
-                is_static,
-                met_identifier,
-                params,
-                return_type,
-                block,
-                ..
-            } = method
-            {
-                let method_symbol =
-                    self.analyze_method_signature(*is_static, met_identifier, params, return_type)?;
-                analyzed_methods.push((method_symbol, block));
-            } else {
-                unreachable!("Some non method found inside itupad_block");
+        if let Stmt::ItupadBlock { methods, .. } = itupad_block {
+            for method in methods {
+                if let Stmt::Method {
+                    is_static,
+                    met_identifier,
+                    params,
+                    return_type,
+                    block,
+                    ..
+                } = method
+                {
+                    let analyzed_method = self.analyze_method_signature(
+                        &itupad_for,
+                        *is_static,
+                        met_identifier,
+                        params,
+                        return_type,
+                    )?;
+
+                    analyzed_methods.push((analyzed_method, block));
+                }
             }
         }
 
-        let type_info = self.type_table.get_mut(itupad_for).ok_or_else(|| {
+        let type_info = self.type_table.get_mut(&itupad_for).ok_or_else(|| {
             CompilerError::new(
-                &format!("Hindi rehistrado ang tipong `{}`", itupad_for),
+                &format!("Ang tipong {} ay hindi pa na-ideklara", &itupad_for),
                 ErrorKind::Error,
                 line,
                 column,
             )
         })?;
 
-        for (method_sym, _) in &analyzed_methods {
-            if let Symbol::MetSymbol {
-                is_static,
-                name,
-                param_types,
-                return_type,
-            } = method_sym
-            {
+        for (met_sym, _) in &analyzed_methods {
+            if let Symbol::MetSymbol { name, .. } = met_sym {
                 match type_info.methods.entry(name.to_string()) {
-                    Entry::Vacant(v) => {
-                        v.insert(MethodInfo {
-                            arg_types: param_types.clone(),
-                            return_type: return_type.clone(),
-                            is_static: *is_static,
-                        });
-                    }
                     Entry::Occupied(_) => {
                         return Err(CompilerError::new(
-                            &format!("Ang method na `{}` ay na-ideklara na", name),
+                            &format!("May paraan na na `{}` ang tipong `{}`", name, itupad_for),
                             ErrorKind::Error,
                             line,
                             column,
                         ));
                     }
+                    Entry::Vacant(entry) => {
+                        entry.insert(met_sym.clone());
+                    }
                 }
             }
         }
 
-        for (method_sym, method_block) in analyzed_methods {
-            if let Symbol::MetSymbol { return_type, .. } = method_sym {
-                self.analyze_method_body(&return_type, method_block)?;
+        for (met_sym, block) in &analyzed_methods {
+            if let Symbol::MetSymbol { return_type, .. } = met_sym {
+                self.analyze_method_body(return_type, block);
             }
         }
 
@@ -465,7 +488,6 @@ impl<'a> SemanticAnalyzer<'a> {
         return_type: &TolType,
         block: &Expr,
     ) -> Result<(), CompilerError> {
-        self.enter_scope();
         self.current_func_return_type = return_type.clone();
         self.analyze_expression(block)?;
         self.exit_scope();
@@ -475,6 +497,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn analyze_method_signature(
         &mut self,
+        itupad_for: &TolType,
         is_static: bool,
         met_identifier: &Token,
         params: &[(Token, TolType)],
@@ -483,30 +506,44 @@ impl<'a> SemanticAnalyzer<'a> {
         let resolved_params: Vec<_> = params
             .iter()
             .map(|(tok, ty)| {
-                let resolved_ty = if let TolType::UnknownIdentifier(id) = ty {
-                    self.resolve_type(id, tok.line(), tok.column())?
-                } else {
-                    ty.clone()
+                let resolved_type = match ty {
+                    TolType::UnknownIdentifier(id) => {
+                        self.resolve_type(id, tok.line(), tok.column())?
+                    }
+                    TolType::AkoType => itupad_for.clone(),
+                    _ => ty.clone(),
                 };
-
-                Ok((tok.clone(), resolved_ty))
+                Ok((tok.clone(), resolved_type))
             })
             .collect::<Result<_, CompilerError>>()?;
 
-        let resolved_return = if let TolType::UnknownIdentifier(id) = return_type {
-            self.resolve_type(id, met_identifier.line(), met_identifier.column())?
-        } else {
-            return_type.clone()
-        };
-
-        let param_types: Vec<TolType> = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
-
-        Ok(Symbol::MetSymbol {
+        let param_types = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
+        let symbol = Symbol::MetSymbol {
             is_static,
             name: met_identifier.lexeme().to_string(),
             param_types,
-            return_type: resolved_return,
-        })
+            return_type: return_type.clone(),
+        };
+
+        if !self.declare_symbol(met_identifier.lexeme(), symbol.clone()) {
+            return Err(self.declared_in_scope_err(met_identifier));
+        }
+
+        self.enter_scope();
+        for (tok, ty) in &resolved_params {
+            let param_symbol = Symbol::VarSymbol {
+                name: tok.lexeme().to_string(),
+                tol_type: ty.clone(),
+            };
+
+            if !self.declare_symbol(tok.lexeme(), param_symbol) {
+                return Err(self.declared_in_scope_err(tok));
+            }
+        }
+
+        // NO exit_scope() call here, it will be called by analyze_method_body()
+
+        Ok(symbol)
     }
 
     fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
@@ -680,56 +717,98 @@ impl<'a> SemanticAnalyzer<'a> {
                 column,
             } => {
                 let left_type = self.analyze_expression(left)?;
-                let arg_types: Vec<_> = args
-                    .iter()
-                    .map(|arg| self.analyze_expression(arg))
-                    .collect::<Result<_, CompilerError>>()?;
+                let mut arg_types = vec![left_type.clone()];
+                for arg in args {
+                    arg_types.push(self.analyze_expression(arg)?);
+                }
 
                 match self.type_table.get(&left_type) {
                     Some(type_info) => match type_info.methods.get(callee.lexeme()) {
-                        Some(met_info) => {
-                            if let Err(e) = Self::check_call(&arg_types, &met_info.arg_types) {
+                        Some(met_sym) => {
+                            if let Symbol::MetSymbol {
+                                param_types,
+                                return_type,
+                                ..
+                            } = met_sym
+                            {
+                                if let Err(e) = Self::check_call(&arg_types, param_types) {
+                                    return Err(CompilerError::new(
+                                        e,
+                                        ErrorKind::Error,
+                                        *line,
+                                        *column,
+                                    ));
+                                }
+
+                                Ok(return_type.clone())
+                            } else {
+                                unreachable!("met_sym is not a MetSymbol");
+                            }
+                        }
+                        None => Err(CompilerError::new(
+                            &format!(
+                                "Walang method na `{}` ang `{}` na tipo",
+                                callee.lexeme(),
+                                &left_type
+                            ),
+                            ErrorKind::Error,
+                            *line,
+                            *column,
+                        )),
+                    },
+                    None => Err(CompilerError::new(
+                        &format!("Walang miyembro ang `{}`", &left_type),
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )),
+                }
+            }
+            Expr::Struct { name, fields } => {
+                let resolved_type = self.resolve_type(name.lexeme(), name.line(), name.column())?;
+
+                let type_info = match self.type_table.get(&resolved_type) {
+                    Some(t_info) => t_info.clone(),
+                    None => {
+                        return Err(CompilerError::new(
+                            &format!("Hindi rehistrado ang tipo na `{}`", &resolved_type),
+                            ErrorKind::Error,
+                            name.line(),
+                            name.column(),
+                        ));
+                    }
+                };
+
+                for (field_tok, field_expr) in fields {
+                    let field_name = field_tok.lexeme();
+                    let field_type = self.analyze_expression(field_expr)?;
+
+                    match type_info.fields.get(field_name) {
+                        Some(t) => {
+                            if !field_type.is_assignment_compatible(t) {
                                 return Err(CompilerError::new(
-                                    e,
+                                    &format!("Hindi pwede ilagay ang {} sa {}", field_type, t),
                                     ErrorKind::Error,
-                                    *line,
-                                    *column,
+                                    field_tok.line(),
+                                    field_tok.column(),
                                 ));
                             }
-
-                            if met_info.is_static {
-                                return Err(CompilerError::new(
-                                    "Static ang method na ito",
-                                    ErrorKind::Error,
-                                    *line,
-                                    *column,
-                                ).add_note("Ang `::` na operasyon ang ginagamit sa mga static na method, hindi `.`"));
-                            }
-
-                            Ok(met_info.return_type.clone())
                         }
                         None => {
                             return Err(CompilerError::new(
                                 &format!(
-                                    "Walang method na `{}` ang `{}` na tipo",
-                                    callee.lexeme(),
-                                    &left_type
+                                    "Ang field na {} ay wala sa {}",
+                                    field_name, resolved_type
                                 ),
                                 ErrorKind::Error,
-                                *line,
-                                *column,
+                                field_tok.line(),
+                                field_tok.column(),
                             ));
                         }
-                    },
-                    None => {
-                        return Err(CompilerError::new(
-                            &format!("Walang miyembro ang `{}`", &left_type),
-                            ErrorKind::Error,
-                            *line,
-                            *column,
-                        ));
                     }
                 }
+
+                Ok(resolved_type)
             }
             _ => Ok(TolType::Wala),
         }

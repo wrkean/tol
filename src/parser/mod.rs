@@ -91,7 +91,7 @@ impl<'a> Parser<'a> {
     fn parse_params(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
         let mut params = Vec::new();
 
-        if self.peek().kind() == &TokenKind::Ako {
+        if self.peek().lexeme() == "ako" {
             params.push((self.advance().clone(), TolType::AkoType));
         }
 
@@ -334,8 +334,8 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
-        self.consume(TokenKind::LeftParen, self.expect_err("`(`"));
-        let is_static = self.peek().kind() != &TokenKind::Ako;
+        self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
+        let is_static = self.peek().lexeme() != "ako";
         let params = self.parse_params()?;
         self.advance(); // Consumes `)`
 
@@ -469,6 +469,8 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);
+                } else if self.peek().kind() == &TokenKind::LeftBrace {
+                    return self.parse_struct_expr(&current_tok);
                 }
 
                 Ok(Expr::Identifier(current_tok))
@@ -491,6 +493,35 @@ impl<'a> Parser<'a> {
             }
             _ => Err(self.expect_err("expresyon")),
         }
+    }
+
+    fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
+        let struct_name = struct_name.clone();
+        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
+
+        let mut fields = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            let field_name = self
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+                .clone();
+            self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
+            let field_expr = self.parse_expression(0)?;
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(self.expect_err("`}` o `,`"));
+            }
+
+            fields.push((field_name, field_expr));
+        }
+
+        self.advance();
+
+        Ok(Expr::Struct {
+            name: struct_name.clone(),
+            fields,
+        })
     }
 
     fn led(&mut self, op: &Token, left: Expr) -> Result<Expr, CompilerError> {
