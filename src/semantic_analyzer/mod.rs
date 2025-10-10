@@ -866,6 +866,19 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 };
 
+                if fields.len() != type_info.fields.len() {
+                    return Err(CompilerError::new(
+                        &format!(
+                            "Hindi wastong bilang ng fields, ang {} ay may {} na bilang ng fields",
+                            &resolved_type,
+                            type_info.fields.len()
+                        ),
+                        ErrorKind::Error,
+                        name.line(),
+                        name.column(),
+                    ));
+                }
+
                 for (field_tok, field_expr) in fields {
                     let field_name = field_tok.lexeme();
                     let field_type = self.analyze_expression(field_expr)?;
