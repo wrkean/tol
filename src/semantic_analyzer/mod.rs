@@ -790,7 +790,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 line,
                 column,
             } => {
-                let left_type = self.analyze_expression(left)?;
+                let left_type = self.resolve_type(left.lexeme(), left.line(), left.column())?;
                 let mut arg_types = Vec::new();
                 for arg in args {
                     arg_types.push(self.analyze_expression(arg)?);

@@ -439,13 +439,14 @@ impl<'a> Parser<'a> {
         let mut left = self.nud()?;
 
         while !self.is_at_end() {
+            let previous_tok = self.peek_previous().clone();
             let op = self.peek().clone();
             if self.get_precedence(&op) <= precedence {
                 break;
             }
 
             self.advance();
-            left = self.led(&op, left)?;
+            left = self.led(&op, left, &previous_tok)?;
         }
 
         Ok(left)
@@ -516,7 +517,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn led(&mut self, op: &Token, left: Expr) -> Result<Expr, CompilerError> {
+    fn led(
+        &mut self,
+        op: &Token,
+        left: Expr,
+        tok_before_op: &Token,
+    ) -> Result<Expr, CompilerError> {
         let precedence = self.get_precedence(op);
         let right = self.parse_expression(precedence)?;
 
@@ -543,28 +549,30 @@ impl<'a> Parser<'a> {
                     op.column(),
                 )),
             },
-            TokenKind::ColonColon => match right {
-                Expr::Identifier(tok) => Ok(Expr::StaticFieldAccess {
-                    left: Box::new(left),
-                    field: tok,
-                    line: op.line(),
-                    column: op.column(),
-                }),
-                // TODO: StaticMethodCall
-                Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
-                    left: Box::new(left),
-                    callee,
-                    args,
-                    line: op.line(),
-                    column: op.column(),
-                }),
-                _ => Err(CompilerError::new(
-                    "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
-                    ErrorKind::Error,
-                    op.line(),
-                    op.column(),
-                )),
-            },
+            TokenKind::ColonColon => {
+                match right {
+                    Expr::Identifier(tok) => Ok(Expr::StaticFieldAccess {
+                        left: tok_before_op.clone(),
+                        field: tok,
+                        line: op.line(),
+                        column: op.column(),
+                    }),
+                    // TODO: StaticMethodCall
+                    Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
+                        left: tok_before_op.clone(),
+                        callee,
+                        args,
+                        line: op.line(),
+                        column: op.column(),
+                    }),
+                    _ => Err(CompilerError::new(
+                        "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
+                        ErrorKind::Error,
+                        op.line(),
+                        op.column(),
+                    )),
+                }
+            }
             _ => Ok(Expr::Binary {
                 op: op.clone(),
                 left: Box::new(left),
@@ -665,7 +673,15 @@ impl<'a> Parser<'a> {
         if !self.is_at_end() {
             &self.tokens[self.current]
         } else {
-            panic!("Unexpected end of input")
+            panic!("Unexpected end of input");
+        }
+    }
+
+    fn peek_previous(&self) -> &Token {
+        if self.current <= self.tokens.len() {
+            &self.tokens[self.current - 1]
+        } else {
+            panic!("Unexpected end of input");
         }
     }
 

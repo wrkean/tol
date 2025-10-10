@@ -32,7 +32,7 @@ pub enum Expr {
         column: usize,
     },
     StaticFieldAccess {
-        left: Box<Expr>,
+        left: Token,
         field: Token,
         line: usize,
         column: usize,
@@ -45,7 +45,7 @@ pub enum Expr {
         column: usize,
     },
     StaticMethodCall {
-        left: Box<Expr>,
+        left: Token,
         callee: Token,
         args: Vec<Expr>,
         line: usize,

@@ -23,7 +23,7 @@ paraan una() {
     ang tao: Tao = Tao {edad: 8, tuig: 9};
     ang edad: i32 = tao.edad;
     ang tuig: u32 = tao.get_tuig();
-    ang bagong_tao: Tao = tao::bago();
+    ang bagong_tao: Tao = Tao::bago();
 
     @println("Kumusta mundo");
     @alis(1);
