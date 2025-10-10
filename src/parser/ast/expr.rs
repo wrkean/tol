@@ -25,6 +25,36 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    FieldAccess {
+        left: Box<Expr>,
+        member: Token,
+        line: usize,
+        column: usize,
+    },
+    StaticFieldAccess {
+        left: Box<Expr>,
+        field: Token,
+        line: usize,
+        column: usize,
+    },
+    MethodCall {
+        left: Box<Expr>,
+        callee: Token,
+        args: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
+    StaticMethodCall {
+        left: Box<Expr>,
+        callee: Token,
+        args: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
+    Struct {
+        name: Token,
+        fields: Vec<(Token, Expr)>,
+    },
 }
 
 impl fmt::Display for Expr {

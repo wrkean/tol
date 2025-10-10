@@ -29,6 +29,7 @@ impl<'a> Lexer<'a> {
             ("maiba", TokenKind::Maiba),
             ("ibalik", TokenKind::Ibalik),
             ("bagay", TokenKind::Bagay),
+            ("itupad", TokenKind::Itupad),
         ]);
         Self {
             source,
@@ -75,11 +76,17 @@ impl<'a> Lexer<'a> {
             ')' => self.add_token(TokenKind::RightParen, None),
             '{' => self.add_token(TokenKind::LeftBrace, None),
             '}' => self.add_token(TokenKind::RightBrace, None),
-            ':' => self.add_token(TokenKind::Colon, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
             '.' => self.add_token(TokenKind::Dot, None),
             '@' => self.add_token(TokenKind::At, None),
+            ':' => {
+                if self.match_char(':') {
+                    self.add_token(TokenKind::ColonColon, None);
+                } else {
+                    self.add_token(TokenKind::Colon, None);
+                }
+            }
             '+' => {
                 if self.match_char('=') {
                     self.add_token(TokenKind::PlusEqual, None);
@@ -151,7 +158,7 @@ impl<'a> Lexer<'a> {
                     self.add_token(TokenKind::Lesser, None);
                 }
             }
-            c if c.is_whitespace() => {
+            c if c.is_whitespace() && c != '\n' => {
                 self.skip_whitespace();
             }
             '\n' => {

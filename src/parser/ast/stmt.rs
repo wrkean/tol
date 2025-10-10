@@ -11,6 +11,15 @@ pub enum Stmt {
         line: usize,
         column: usize,
     },
+    Method {
+        is_static: bool,
+        met_identifier: Token,
+        params: Vec<(Token, TolType)>,
+        return_type: TolType,
+        block: Expr,
+        line: usize,
+        column: usize,
+    },
     Ang {
         mutable: bool,
         ang_identifier: Token,
@@ -32,5 +41,16 @@ pub enum Stmt {
     Bagay {
         bagay_identifier: Token,
         fields: Vec<(Token, TolType)>,
+    },
+    Itupad {
+        itupad_for: TolType,
+        itupad_block: Box<Stmt>,
+        line: usize,
+        column: usize,
+    },
+    ItupadBlock {
+        methods: Vec<Stmt>,
+        line: usize,
+        column: usize,
     },
 }

@@ -1,7 +1,9 @@
 use core::panic;
-use std::{char::ToLowercase, fmt};
+use std::fmt;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+pub mod type_info;
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TolType {
     // Integers
     // Signed
@@ -36,7 +38,10 @@ pub enum TolType {
 
     // Composite
     Bagay(String),
+    UnknownIdentifier(String),
 
+    // Special
+    AkoType,
     Unknown,
 }
 
@@ -99,6 +104,8 @@ impl TolType {
             TolType::Kar => "char",
             TolType::Wala => "void",
             TolType::Sinulid => "char*",
+            TolType::Bagay(s) => s,
+            TolType::UnknownIdentifier(s) => s,
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
@@ -130,6 +137,8 @@ impl fmt::Display for TolType {
             TolType::Sinulid => write!(f, "sinulid"),
             TolType::UnsizedInt => write!(f, "literal na integer"),
             TolType::UnsizedFloat => write!(f, "literal na lutang"),
+            TolType::Bagay(s) => write!(f, "{}", s),
+            TolType::UnknownIdentifier(s) => write!(f, "{}", s),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

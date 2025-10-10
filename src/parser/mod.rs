@@ -48,6 +48,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ang => self.parse_ang(),
             TokenKind::Ibalik => self.parse_ibalik(),
             TokenKind::Bagay => self.parse_bagay(),
+            TokenKind::Itupad => self.parse_itupad(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -61,7 +62,13 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
+        self.consume(
+            TokenKind::LeftParen,
+            self.expect_err("`(`")
+                .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
+        )?;
         let params = self.parse_params()?;
+        self.advance(); // Consumes `}`
 
         let mut return_type = TolType::Wala;
         if self.peek().kind() == &TokenKind::ThinArrow {
@@ -83,11 +90,14 @@ impl<'a> Parser<'a> {
 
     fn parse_params(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {
         let mut params = Vec::new();
-        self.consume(
-            TokenKind::LeftParen,
-            self.expect_err("`(`")
-                .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
-        )?;
+
+        if self.peek().lexeme() == "ako" {
+            params.push((self.advance().clone(), TolType::AkoType));
+        }
+
+        if self.peek().kind() == &TokenKind::Comma {
+            self.advance();
+        }
 
         while self.peek().kind() != &TokenKind::RightParen {
             let param_identifier = self
@@ -117,8 +127,6 @@ impl<'a> Parser<'a> {
 
             params.push((param_identifier, param_type))
         }
-
-        self.advance(); // Consumes `)`
 
         Ok(params)
     }
@@ -273,6 +281,83 @@ impl<'a> Parser<'a> {
         Ok(fields)
     }
 
+    fn parse_itupad(&mut self) -> Result<Stmt, CompilerError> {
+        let itupad_tok = self
+            .consume(TokenKind::Itupad, self.expect_err("`itupad`"))?
+            .clone();
+
+        let itupad_for = self.parse_type()?;
+
+        let itupad_block = self.parse_itupad_block()?;
+
+        Ok(Stmt::Itupad {
+            itupad_for,
+            itupad_block: Box::new(itupad_block),
+            line: itupad_tok.line(),
+            column: itupad_tok.column(),
+        })
+    }
+
+    fn parse_itupad_block(&mut self) -> Result<Stmt, CompilerError> {
+        let lb_tok = self
+            .consume(TokenKind::LeftBrace, self.expect_err("`{`"))?
+            .clone();
+
+        let mut methods = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            methods.push(self.parse_method()?);
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(self
+                    .expect_err("`,` o `}`")
+                    .add_help("Baka nakalimutan mo isarado ang `}`"));
+            }
+        }
+
+        self.advance(); // Consumes `}`
+
+        Ok(Stmt::ItupadBlock {
+            methods,
+            line: lb_tok.line(),
+            column: lb_tok.column(),
+        })
+    }
+
+    fn parse_method(&mut self) -> Result<Stmt, CompilerError> {
+        let par_tok = self
+            .consume(TokenKind::Paraan, self.expect_err("`paraan`"))?
+            .clone();
+
+        let met_identifier = self
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+            .clone();
+
+        self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
+        let is_static = self.peek().lexeme() != "ako";
+        let params = self.parse_params()?;
+        self.advance(); // Consumes `)`
+
+        let mut return_type = TolType::Wala;
+        if self.peek().kind() == &TokenKind::ThinArrow {
+            self.advance();
+            return_type = self.parse_type()?;
+        }
+
+        let block = self.parse_block()?;
+
+        Ok(Stmt::Method {
+            is_static,
+            met_identifier,
+            params,
+            return_type,
+            block,
+            line: par_tok.line(),
+            column: par_tok.column(),
+        })
+    }
+
     fn parse_expr_stmt(&mut self) -> Result<Stmt, CompilerError> {
         let start_tok = self.peek().clone();
         let expr = self.parse_expression(0)?;
@@ -308,6 +393,10 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::I64)
             }
+            "isukat" => {
+                self.advance();
+                Ok(TolType::ISukat)
+            }
             "u8" => {
                 self.advance();
                 Ok(TolType::U8)
@@ -323,6 +412,10 @@ impl<'a> Parser<'a> {
             "u64" => {
                 self.advance();
                 Ok(TolType::U64)
+            }
+            "usukat" => {
+                self.advance();
+                Ok(TolType::USukat)
             }
             "lutang" => {
                 self.advance();
@@ -344,19 +437,9 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::Wala)
             }
-            _ => {
-                self.advance();
-                // NOTE: Error to tagalog?
-                Err(CompilerError::new(
-                    &format!(
-                        "`{}` ay hindi valid na tipo at hindi valid na simula ng isang tipo",
-                        self.peek().lexeme()
-                    ),
-                    ErrorKind::Error,
-                    self.peek().line(),
-                    self.peek().column(),
-                ))
-            }
+            _ => Ok(TolType::UnknownIdentifier(
+                self.advance().lexeme().to_string(),
+            )),
         }
     }
 
@@ -386,6 +469,8 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);
+                } else if self.peek().kind() == &TokenKind::LeftBrace {
+                    return self.parse_struct_expr(&current_tok);
                 }
 
                 Ok(Expr::Identifier(current_tok))
@@ -410,15 +495,90 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
+        let struct_name = struct_name.clone();
+        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
+
+        let mut fields = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            let field_name = self
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+                .clone();
+            self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
+            let field_expr = self.parse_expression(0)?;
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(self.expect_err("`}` o `,`"));
+            }
+
+            fields.push((field_name, field_expr));
+        }
+
+        self.advance();
+
+        Ok(Expr::Struct {
+            name: struct_name.clone(),
+            fields,
+        })
+    }
+
     fn led(&mut self, op: &Token, left: Expr) -> Result<Expr, CompilerError> {
         let precedence = self.get_precedence(op);
         let right = self.parse_expression(precedence)?;
 
-        Ok(Expr::Binary {
-            op: op.clone(),
-            left: Box::new(left),
-            right: Box::new(right),
-        })
+        match op.kind() {
+            TokenKind::Dot => match right {
+                Expr::Identifier(tok) => Ok(Expr::FieldAccess {
+                    left: Box::new(left),
+                    member: tok,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                // TODO: MethodCall
+                Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
+                    left: Box::new(left),
+                    callee,
+                    args,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                _ => Err(CompilerError::new(
+                    "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
+                    ErrorKind::Error,
+                    op.line(),
+                    op.column(),
+                )),
+            },
+            TokenKind::ColonColon => match right {
+                Expr::Identifier(tok) => Ok(Expr::StaticFieldAccess {
+                    left: Box::new(left),
+                    field: tok,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                // TODO: StaticMethodCall
+                Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
+                    left: Box::new(left),
+                    callee,
+                    args,
+                    line: op.line(),
+                    column: op.column(),
+                }),
+                _ => Err(CompilerError::new(
+                    "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
+                    ErrorKind::Error,
+                    op.line(),
+                    op.column(),
+                )),
+            },
+            _ => Ok(Expr::Binary {
+                op: op.clone(),
+                left: Box::new(left),
+                right: Box::new(right),
+            }),
+        }
     }
 
     fn parse_fncall(&mut self, callee: &Token) -> Result<Expr, CompilerError> {
@@ -465,7 +625,7 @@ impl<'a> Parser<'a> {
         match op.kind() {
             TokenKind::Plus | TokenKind::Minus => 1,
             TokenKind::Star | TokenKind::Slash => 2,
-            TokenKind::Dot => 3,
+            TokenKind::Dot | TokenKind::ColonColon => 3,
             _ => 0,
         }
     }

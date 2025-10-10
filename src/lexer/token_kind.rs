@@ -6,6 +6,8 @@ pub enum TokenKind {
     Maiba,
     Ibalik,
     Bagay,
+    Ako,
+    Itupad,
 
     Identifier,
 
@@ -20,6 +22,7 @@ pub enum TokenKind {
     LeftParen,
     RightParen,
     Colon,
+    ColonColon,
     Comma,
     Dot,
     SemiColon,
