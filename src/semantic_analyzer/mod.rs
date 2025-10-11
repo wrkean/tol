@@ -444,6 +444,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     )?;
 
                     analyzed_methods.push((analyzed_method, block));
+                    self.analyze_method_body(return_type, block)?;
                 }
             }
         }
@@ -475,12 +476,6 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
-        for (met_sym, block) in &analyzed_methods {
-            if let Symbol::MetSymbol { return_type, .. } = met_sym {
-                self.analyze_method_body(return_type, block);
-            }
-        }
-
         Ok(())
     }
 
@@ -490,6 +485,7 @@ impl<'a> SemanticAnalyzer<'a> {
         block: &Expr,
     ) -> Result<(), CompilerError> {
         self.current_func_return_type = return_type.clone();
+        println!("{:?}", self.symbol_table);
         self.analyze_expression(block)?;
         self.exit_scope();
 
