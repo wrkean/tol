@@ -75,15 +75,14 @@ impl TolType {
     }
 
     pub fn is_assignment_compatible(&self, other: &Self) -> bool {
-        if self == &TolType::UnsizedInt {
-            return other.is_integer();
-        }
+        use TolType::*;
 
-        if self == &TolType::UnsizedFloat {
-            return other.is_float();
+        match (self, other) {
+            (UnsizedInt, o) => o.is_integer(),
+            (UnsizedFloat, o) => o.is_float(),
+            (Bagay(s1), UnknownIdentifier(s2)) | (UnknownIdentifier(s1), Bagay(s2)) => s1 == s2,
+            _ => self == other,
         }
-
-        self == other
     }
 
     pub fn as_c(&self) -> String {

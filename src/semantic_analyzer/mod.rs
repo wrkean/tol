@@ -164,6 +164,7 @@ impl<'a> SemanticAnalyzer<'a> {
         println!("{}", ang_type);
 
         let rhs_type = self.analyze_expression(rhs)?;
+        println!("{:?}, {:?}", rhs_type, ang_type);
         if !rhs_type.is_assignment_compatible(&ang_type) {
             return Err(CompilerError::new(
                 &format!(
@@ -443,6 +444,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     )?;
 
                     analyzed_methods.push((analyzed_method, block));
+                    self.analyze_method_body(return_type, block)?;
                 }
             }
         }
@@ -474,12 +476,6 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
-        for (met_sym, block) in &analyzed_methods {
-            if let Symbol::MetSymbol { return_type, .. } = met_sym {
-                self.analyze_method_body(return_type, block);
-            }
-        }
-
         Ok(())
     }
 
@@ -489,6 +485,7 @@ impl<'a> SemanticAnalyzer<'a> {
         block: &Expr,
     ) -> Result<(), CompilerError> {
         self.current_func_return_type = return_type.clone();
+        println!("{:?}", self.symbol_table);
         self.analyze_expression(block)?;
         self.exit_scope();
 
@@ -728,9 +725,19 @@ impl<'a> SemanticAnalyzer<'a> {
                             if let Symbol::MetSymbol {
                                 param_types,
                                 return_type,
+                                is_static,
                                 ..
                             } = met_sym
                             {
+                                if *is_static {
+                                    return Err(CompilerError::new(
+                                        &format!("{} ay isang static na paraan!", callee.lexeme()),
+                                        ErrorKind::Error,
+                                        callee.line(),
+                                        callee.column(),
+                                    ));
+                                }
+
                                 if let Err(e) = Self::check_call(&arg_types, param_types) {
                                     return Err(CompilerError::new(
                                         e,
@@ -764,6 +771,82 @@ impl<'a> SemanticAnalyzer<'a> {
                     )),
                 }
             }
+            // Expr::StaticFieldAccess {
+            //     left,
+            //     field,
+            //     line,
+            //     column,
+            // } => {
+            //
+            // }
+            Expr::StaticMethodCall {
+                left,
+                callee,
+                args,
+                line,
+                column,
+            } => {
+                let left_type = self.resolve_type(left.lexeme(), left.line(), left.column())?;
+                let mut arg_types = Vec::new();
+                for arg in args {
+                    arg_types.push(self.analyze_expression(arg)?);
+                }
+
+                match self.type_table.get(&left_type) {
+                    Some(type_info) => match type_info.methods.get(callee.lexeme()) {
+                        Some(met_sym) => {
+                            if let Symbol::MetSymbol {
+                                is_static,
+                                param_types,
+                                return_type,
+                                ..
+                            } = met_sym
+                            {
+                                if !is_static {
+                                    return Err(CompilerError::new(
+                                        &format!(
+                                            "{} ay hindi isang static na paraan",
+                                            callee.lexeme()
+                                        ),
+                                        ErrorKind::Error,
+                                        callee.line(),
+                                        callee.column(),
+                                    ));
+                                }
+
+                                if let Err(e) = Self::check_call(&arg_types, param_types) {
+                                    return Err(CompilerError::new(
+                                        e,
+                                        ErrorKind::Error,
+                                        *line,
+                                        *column,
+                                    ));
+                                }
+
+                                Ok(return_type.clone())
+                            } else {
+                                unreachable!("met_sym is not a MetSymbol");
+                            }
+                        }
+                        None => Err(CompilerError::new(
+                            &format!(
+                                "Walang method na `{}` ang `{}` na tipo",
+                                callee.lexeme(),
+                                &left_type
+                            ),
+                            ErrorKind::Error,
+                            *line,
+                            *column,
+                        )),
+                    },
+                    None => Err(CompilerError::new(
+                        &format!("Hindi rehistrado ang tipong {}", &left_type),
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )),
+                }
+            }
             Expr::Struct { name, fields } => {
                 let resolved_type = self.resolve_type(name.lexeme(), name.line(), name.column())?;
 
@@ -778,6 +861,19 @@ impl<'a> SemanticAnalyzer<'a> {
                         ));
                     }
                 };
+
+                if fields.len() != type_info.fields.len() {
+                    return Err(CompilerError::new(
+                        &format!(
+                            "Hindi wastong bilang ng fields, ang {} ay may {} na bilang ng fields",
+                            &resolved_type,
+                            type_info.fields.len()
+                        ),
+                        ErrorKind::Error,
+                        name.line(),
+                        name.column(),
+                    ));
+                }
 
                 for (field_tok, field_expr) in fields {
                     let field_name = field_tok.lexeme();
