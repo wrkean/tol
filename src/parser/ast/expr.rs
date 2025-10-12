@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     IntLit(Token),
     FloatLit(Token),
@@ -22,6 +22,7 @@ pub enum Expr {
     },
     Block {
         statements: Vec<Stmt>,
+        block_value: Option<Box<Expr>>,
         line: usize,
         column: usize,
     },

@@ -45,8 +45,16 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<Stmt, CompilerError> {
         match self.peek().kind() {
             TokenKind::Paraan => self.parse_par(),
-            TokenKind::Ang => self.parse_ang(),
-            TokenKind::Ibalik => self.parse_ibalik(),
+            TokenKind::Ang => {
+                let ang_stmt = self.parse_ang();
+                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
+                ang_stmt
+            }
+            TokenKind::Ibalik => {
+                let ibalik_stmt = self.parse_ibalik();
+                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
+                ibalik_stmt
+            }
             TokenKind::Bagay => self.parse_bagay(),
             TokenKind::Itupad => self.parse_itupad(),
             _ => self.parse_expr_stmt(),
@@ -137,8 +145,21 @@ impl<'a> Parser<'a> {
             .clone();
 
         let mut statements = Vec::new();
+        let mut block_value = None;
         while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBrace {
-            statements.push(self.parse_statement()?);
+            let statement = self.parse_statement()?;
+
+            if let Stmt::ExprS { expr, .. } = &statement {
+                if self.peek().kind() == &TokenKind::RightBrace {
+                    block_value = Some(Box::new(expr.clone()));
+                } else {
+                    self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
+                    statements.push(statement);
+                }
+            } else {
+                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
+                statements.push(statement);
+            }
         }
 
         if self.is_at_end() {
@@ -155,6 +176,7 @@ impl<'a> Parser<'a> {
 
         Ok(Expr::Block {
             statements,
+            block_value,
             line: left_brace_tok.line(),
             column: left_brace_tok.column(),
         })
@@ -199,11 +221,6 @@ impl<'a> Parser<'a> {
         )?;
         let rhs = self.parse_expression(0)?;
 
-        self.consume(
-            TokenKind::SemiColon,
-            self.expect_err("`;`").add_help("Lagyan mo ng `;`"),
-        )?;
-
         Ok(Stmt::Ang {
             mutable,
             ang_identifier,
@@ -220,11 +237,6 @@ impl<'a> Parser<'a> {
             .clone();
 
         let rhs = self.parse_expression(0)?;
-
-        self.consume(
-            TokenKind::SemiColon,
-            self.expect_err("`;`").add_help("Lagyan ng `;` dito"),
-        )?;
 
         Ok(Stmt::Ibalik {
             rhs,
@@ -353,11 +365,6 @@ impl<'a> Parser<'a> {
     fn parse_expr_stmt(&mut self) -> Result<Stmt, CompilerError> {
         let start_tok = self.peek().clone();
         let expr = self.parse_expression(0)?;
-
-        self.consume(
-            TokenKind::SemiColon,
-            self.expect_err("`;`").add_help("Lagyan mo ng `;`"),
-        )?;
 
         Ok(Stmt::ExprS {
             expr,
