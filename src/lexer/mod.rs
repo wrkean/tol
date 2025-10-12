@@ -315,10 +315,12 @@ impl<'a> Lexer<'a> {
         unicode_ident::is_xid_continue(ch)
     }
 
+    #[allow(dead_code)]
     fn is_ascii_identifier_start(&self, ch: char) -> bool {
         ch.is_ascii_alphabetic() || ch == '_'
     }
 
+    #[allow(dead_code)]
     fn is_ascii_identifier_continue(&self, ch: char) -> bool {
         ch.is_ascii_alphanumeric() || ch == '_'
     }

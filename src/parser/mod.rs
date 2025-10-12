@@ -489,7 +489,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
-        let struct_name = struct_name.clone();
         self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
 
         let mut fields = Vec::new();
@@ -497,7 +496,9 @@ impl<'a> Parser<'a> {
             let field_name = self
                 .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
                 .clone();
+
             self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
+
             let field_expr = self.parse_expression(0)?;
 
             if self.peek().kind() == &TokenKind::Comma {
@@ -512,8 +513,10 @@ impl<'a> Parser<'a> {
         self.advance();
 
         Ok(Expr::Struct {
-            name: struct_name.clone(),
+            name: TolType::UnknownIdentifier(struct_name.lexeme().to_string()),
             fields,
+            line: struct_name.line(),
+            column: struct_name.column(),
         })
     }
 
@@ -559,7 +562,7 @@ impl<'a> Parser<'a> {
                     }),
                     // TODO: StaticMethodCall
                     Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
-                        left: tok_before_op.clone(),
+                        left: TolType::UnknownIdentifier(tok_before_op.lexeme().to_string()),
                         callee,
                         args,
                         line: op.line(),

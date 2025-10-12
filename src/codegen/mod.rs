@@ -1,5 +1,3 @@
-use std::collections::linked_list;
-
 use crate::{
     lexer::token::Token,
     parser::ast::{expr::Expr, stmt::Stmt},
@@ -115,13 +113,11 @@ impl<'a> CodeGenerator<'a> {
 
     fn gen_method(&mut self, method: &Stmt, itupad_for: &TolType) {
         if let Stmt::Method {
-            is_static,
             met_identifier,
             params,
             return_type,
             block,
-            line,
-            column,
+            ..
         } = method
         {
             let type_c = return_type.as_c();
@@ -246,8 +242,8 @@ impl<'a> CodeGenerator<'a> {
 
                 format!("{}{}", callee.lexeme(), args_str_c)
             }
-            Expr::Struct { name, fields } => {
-                let struct_name_c = name.lexeme();
+            Expr::Struct { name, fields, .. } => {
+                let struct_name_c = name.as_c();
                 let mut struct_block_c = String::from("{");
                 for (i, (field_name, field_expr)) in fields.iter().enumerate() {
                     struct_block_c.push_str(&format!(

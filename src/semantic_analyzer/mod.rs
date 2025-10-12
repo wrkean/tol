@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, hash_map::Entry, linked_list};
+use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
     error::{CompilerError, ErrorKind},
@@ -12,10 +12,9 @@ pub struct SemanticAnalyzer<'a> {
     ast: &'a Stmt,
     source_path: &'a str,
     symbol_table: Vec<HashMap<String, Symbol>>,
-    type_table: HashMap<TolType, TypeInfo>,
+    type_table: HashMap<String, TypeInfo>,
     has_error: bool,
     current_func_return_type: TolType,
-    magic_funcs: HashSet<&'static str>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -27,7 +26,6 @@ impl<'a> SemanticAnalyzer<'a> {
             type_table: HashMap::new(),
             has_error: false,
             current_func_return_type: TolType::Unknown,
-            magic_funcs: HashSet::from(["print", "println", "exit"]),
         };
 
         // Declare magic functions first
@@ -36,18 +34,14 @@ impl<'a> SemanticAnalyzer<'a> {
         new_analyzer
     }
 
-    pub fn has_error(&self) -> bool {
-        self.has_error
-    }
-
     pub fn analyze(&mut self) {
         let statements = match self.ast {
             Stmt::Program(stmts) => stmts,
             _ => panic!("ast did not start with a program node"),
         };
 
-        // First pass: collect type declarations
-        for stmt in statements.iter() {
+        // Collect type declarations
+        for stmt in statements {
             if let Stmt::Bagay {
                 bagay_identifier,
                 fields,
@@ -65,7 +59,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
-        println!("{:?}", self.type_table.keys());
+        // println!("{:?}", self.type_table.keys());
     }
 
     fn analyze_stmt(&mut self, stmt: &Stmt) {
@@ -77,12 +71,12 @@ impl<'a> SemanticAnalyzer<'a> {
                 line,
                 column,
                 ..
-            } => {
-                if let Err(e) = self.analyze_ang(ang_identifier, ang_type, rhs, line, column) {
+            } => self
+                .analyze_ang(ang_identifier, ang_type, rhs, line, column)
+                .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
-                }
-            }
+                }),
             Stmt::Par {
                 par_identifier,
                 params,
@@ -91,17 +85,17 @@ impl<'a> SemanticAnalyzer<'a> {
                 // line,
                 // column,
                 ..
-            } => {
-                if let Err(e) = self.analyze_par(par_identifier, params, return_type, block) {
+            } => self
+                .analyze_par(par_identifier, params, return_type, block)
+                .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
-                }
-            }
+                }),
             Stmt::Ibalik { rhs, line, column } => {
-                if let Err(e) = self.analyze_ibalik(rhs, line, column) {
+                self.analyze_ibalik(rhs, line, column).unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
-                }
+                })
             }
             Stmt::ExprS { expr, .. } => {
                 if let Err(e) = self.analyze_expression(expr) {
@@ -112,38 +106,26 @@ impl<'a> SemanticAnalyzer<'a> {
             Stmt::Bagay {
                 bagay_identifier,
                 fields,
-            } => {
-                if let Err(e) = self.analyze_bagay(bagay_identifier, fields) {
+            } => self
+                .analyze_bagay(bagay_identifier, fields)
+                .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
-                }
-            }
+                }),
             Stmt::Itupad {
                 itupad_for,
                 itupad_block,
                 line,
                 column,
             } => {
-                if let Err(e) = self.analyze_itupad(itupad_for, &*itupad_block, *line, *column) {
+                if let Err(e) = self.analyze_itupad(itupad_for, itupad_block, *line, *column) {
                     self.has_error = true;
                     e.display(self.source_path);
                 }
             }
             // TODO: analyze ts
-            Stmt::ItupadBlock {
-                methods,
-                line,
-                column,
-            } => {}
-            Stmt::Method {
-                is_static,
-                met_identifier,
-                params,
-                return_type,
-                block,
-                line,
-                column,
-            } => {}
+            Stmt::ItupadBlock { .. } => {}
+            Stmt::Method { .. } => {}
             Stmt::Program(_) => {}
         };
     }
@@ -156,15 +138,10 @@ impl<'a> SemanticAnalyzer<'a> {
         line: &usize,
         column: &usize,
     ) -> Result<(), CompilerError> {
-        let ang_type = if let TolType::UnknownIdentifier(id) = ang_type {
-            self.resolve_type(id, *line, *column)?
-        } else {
-            ang_type.clone()
-        };
-        println!("{}", ang_type);
+        let ang_type = self.resolve_type(ang_type, *line, *column)?;
 
         let rhs_type = self.analyze_expression(rhs)?;
-        println!("{:?}, {:?}", rhs_type, ang_type);
+        // println!("{:?}, {:?}", rhs_type, ang_type);
         if !rhs_type.is_assignment_compatible(&ang_type) {
             return Err(CompilerError::new(
                 &format!(
@@ -177,35 +154,37 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
-        let var_symbol = Symbol::VarSymbol {
+        let var_symbol = Symbol::Var {
             name: ang_identifier.lexeme().to_string(),
             tol_type: ang_type.clone(),
         };
 
         if !self.declare_symbol(ang_identifier.lexeme(), var_symbol) {
-            let err = self.declared_in_scope_err(ang_identifier);
-
-            if let Some(func) = self.magic_funcs.get(ang_identifier.lexeme()) {
-                err.add_note(&format!("Ang `{func}` ay isang paraan na may 'mahika'."))
-                    .add_note("Ang paraan ay may mahika kung kilala ito ng compiler")
-            } else {
-                err
-            };
+            return Err(self.declared_in_scope_err(ang_identifier));
         }
 
         Ok(())
     }
 
-    fn resolve_type(&self, id: &str, line: usize, column: usize) -> Result<TolType, CompilerError> {
-        self.type_table
-            .get(&TolType::Bagay(id.to_string()))
-            .map(|t| t.kind.clone())
-            .ok_or(CompilerError::new(
-                &format!("Hindi valid na tipo ang `{}`", id),
-                ErrorKind::Error,
-                line,
-                column,
-            ))
+    fn resolve_type(
+        &self,
+        type_to_resolve: &TolType,
+        line: usize,
+        column: usize,
+    ) -> Result<TolType, CompilerError> {
+        match type_to_resolve {
+            TolType::UnknownIdentifier(id) => self
+                .type_table
+                .get(id)
+                .map(|t| t.kind.clone())
+                .ok_or(CompilerError::new(
+                    &format!("Hindi valid na tipo ang `{}`", id),
+                    ErrorKind::Error,
+                    line,
+                    column,
+                )),
+            _ => Ok(type_to_resolve.clone()),
+        }
     }
 
     fn analyze_par(
@@ -217,49 +196,33 @@ impl<'a> SemanticAnalyzer<'a> {
         // line: &usize,
         // column: &usize,
     ) -> Result<(), CompilerError> {
-        // Resolve types
         let resolved_params: Vec<_> = params
             .iter()
             .map(|(tok, ty)| {
-                let resolved_ty = if let TolType::UnknownIdentifier(id) = ty {
-                    self.resolve_type(id, tok.line(), tok.column())?
-                } else {
-                    ty.clone()
-                };
+                let resolved_ty = self.resolve_type(ty, tok.line(), tok.column())?;
 
                 Ok((tok.clone(), resolved_ty))
             })
             .collect::<Result<_, CompilerError>>()?;
 
-        let resolved_return = if let TolType::UnknownIdentifier(id) = return_type {
-            self.resolve_type(id, par_identifier.line(), par_identifier.column())?
-        } else {
-            return_type.clone()
-        };
+        let resolved_return =
+            self.resolve_type(return_type, par_identifier.line(), par_identifier.column())?;
 
         let param_types: Vec<TolType> = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
 
-        let par_symbol = Symbol::ParSymbol {
+        let par_symbol = Symbol::Paraan {
             name: par_identifier.lexeme().to_string(),
             param_types,
             return_type: resolved_return.clone(),
         };
 
         if !self.declare_symbol(par_identifier.lexeme(), par_symbol) {
-            return Err(CompilerError::new(
-                &format!(
-                    "`{}` ay na-ideklara na sa kasalukuyang sakop",
-                    par_identifier.lexeme()
-                ),
-                ErrorKind::Error,
-                par_identifier.line(),
-                par_identifier.column(),
-            ));
+            return Err(self.declared_in_scope_err(par_identifier));
         }
 
         self.enter_scope();
         for (tok, ty) in &resolved_params {
-            let param_symbol = Symbol::VarSymbol {
+            let param_symbol = Symbol::Var {
                 name: tok.lexeme().to_string(),
                 tol_type: ty.clone(),
             };
@@ -268,7 +231,6 @@ impl<'a> SemanticAnalyzer<'a> {
                 return Err(self.declared_in_scope_err(tok));
             }
         }
-
         self.current_func_return_type = resolved_return.clone();
         self.analyze_expression(block)?;
         self.exit_scope();
@@ -284,7 +246,7 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<(), CompilerError> {
         let return_type = self.analyze_expression(rhs)?;
 
-        if self.current_func_return_type == TolType::Unknown && return_type != TolType::Wala {
+        if self.current_func_return_type == TolType::Unknown {
             return Err(CompilerError::new(
                 "Hindi pwede magbalik sa labas ng paraan",
                 ErrorKind::Error,
@@ -314,9 +276,8 @@ impl<'a> SemanticAnalyzer<'a> {
         fields: &[(Token, TolType)],
     ) -> Result<(), CompilerError> {
         let bagay_name = bagay_identifier.lexeme();
-        let bagay_type = TolType::Bagay(bagay_name.to_string());
 
-        let bagay_symbol = Symbol::BagaySymbol {
+        let bagay_symbol = Symbol::Bagay {
             name: bagay_name.to_string(),
         };
         if !self.declare_symbol(bagay_name, bagay_symbol) {
@@ -325,7 +286,8 @@ impl<'a> SemanticAnalyzer<'a> {
 
         // Forward declare the type in the type table, this
         // allows fields to have indirect recursive types
-        match self.type_table.entry(bagay_type.clone()) {
+        let bagay_type = TolType::Bagay(bagay_name.to_string());
+        match self.type_table.entry(bagay_name.to_string()) {
             Entry::Occupied(_) => {
                 return Err(CompilerError::new(
                     &format!(
@@ -346,14 +308,11 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
-        let resolved_fields: Vec<_> = fields
+        let resolved_fields: Vec<(Token, TolType)> = fields
             .iter()
             .map(|(tok, ty)| {
-                let resolved_ty = if let TolType::UnknownIdentifier(id) = ty {
-                    self.resolve_type(id, tok.line(), tok.column())?
-                } else {
-                    ty.clone()
-                };
+                let resolved_ty = self.resolve_type(ty, tok.line(), tok.column())?;
+
                 Ok((tok.clone(), resolved_ty))
             })
             .collect::<Result<_, CompilerError>>()?;
@@ -362,7 +321,7 @@ impl<'a> SemanticAnalyzer<'a> {
         for (tok, ty) in &resolved_fields {
             if !self.declare_symbol(
                 tok.lexeme(),
-                Symbol::VarSymbol {
+                Symbol::Var {
                     name: tok.lexeme().to_string(),
                     tol_type: ty.clone(),
                 },
@@ -373,19 +332,9 @@ impl<'a> SemanticAnalyzer<'a> {
         }
         self.exit_scope();
 
+        // Store fields into the type as a map
         let mut field_map = HashMap::new();
         for (tok, ty) in &resolved_fields {
-            let field_name = tok.lexeme().to_string();
-
-            if field_map.contains_key(&field_name) {
-                return Err(CompilerError::new(
-                    &format!("Duplicate field `{}` in `{}`", field_name, bagay_name),
-                    ErrorKind::Error,
-                    tok.line(),
-                    tok.column(),
-                ));
-            }
-
             if matches!(ty, TolType::Bagay(name) if name == bagay_name) {
                 return Err(CompilerError::new(
                     &format!(
@@ -398,11 +347,11 @@ impl<'a> SemanticAnalyzer<'a> {
                 ));
             }
 
+            let field_name = tok.lexeme().to_string();
             field_map.insert(field_name, ty.clone());
         }
 
-        // Fill in the previously forward-declared entry
-        if let Some(type_info) = self.type_table.get_mut(&bagay_type) {
+        if let Some(type_info) = self.type_table.get_mut(&bagay_type.to_string()) {
             type_info.fields = field_map;
         }
 
@@ -417,11 +366,7 @@ impl<'a> SemanticAnalyzer<'a> {
         column: usize,
     ) -> Result<(), CompilerError> {
         self.enter_scope();
-        let itupad_for = if let TolType::UnknownIdentifier(id) = itupad_for {
-            self.resolve_type(id, line, column)?
-        } else {
-            itupad_for.clone()
-        };
+        let itupad_for = self.resolve_type(itupad_for, line, column)?;
 
         let mut analyzed_methods = Vec::new();
         if let Stmt::ItupadBlock { methods, .. } = itupad_block {
@@ -435,31 +380,34 @@ impl<'a> SemanticAnalyzer<'a> {
                     ..
                 } = method
                 {
-                    let analyzed_method = self.analyze_method_signature(
+                    let analyzed_method = self.analyze_method(
                         &itupad_for,
                         *is_static,
                         met_identifier,
                         params,
                         return_type,
+                        block,
                     )?;
 
                     analyzed_methods.push((analyzed_method, block));
-                    self.analyze_method_body(return_type, block)?;
                 }
             }
         }
 
-        let type_info = self.type_table.get_mut(&itupad_for).ok_or_else(|| {
-            CompilerError::new(
-                &format!("Ang tipong {} ay hindi pa na-ideklara", &itupad_for),
-                ErrorKind::Error,
-                line,
-                column,
-            )
-        })?;
+        let type_info = self
+            .type_table
+            .get_mut(&itupad_for.to_string())
+            .ok_or_else(|| {
+                CompilerError::new(
+                    &format!("Ang tipong {} ay hindi pa na-ideklara", &itupad_for),
+                    ErrorKind::Error,
+                    line,
+                    column,
+                )
+            })?;
 
         for (met_sym, _) in &analyzed_methods {
-            if let Symbol::MetSymbol { name, .. } = met_sym {
+            if let Symbol::Method { name, .. } = met_sym {
                 match type_info.methods.entry(name.to_string()) {
                     Entry::Occupied(_) => {
                         return Err(CompilerError::new(
@@ -479,43 +427,29 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn analyze_method_body(
-        &mut self,
-        return_type: &TolType,
-        block: &Expr,
-    ) -> Result<(), CompilerError> {
-        self.current_func_return_type = return_type.clone();
-        println!("{:?}", self.symbol_table);
-        self.analyze_expression(block)?;
-        self.exit_scope();
-
-        Ok(())
-    }
-
-    fn analyze_method_signature(
+    fn analyze_method(
         &mut self,
         itupad_for: &TolType,
         is_static: bool,
         met_identifier: &Token,
         params: &[(Token, TolType)],
         return_type: &TolType,
+        block: &Expr,
     ) -> Result<Symbol, CompilerError> {
         let resolved_params: Vec<_> = params
             .iter()
             .map(|(tok, ty)| {
                 let resolved_type = match ty {
-                    TolType::UnknownIdentifier(id) => {
-                        self.resolve_type(id, tok.line(), tok.column())?
-                    }
                     TolType::AkoType => itupad_for.clone(),
-                    _ => ty.clone(),
+                    _ => self.resolve_type(ty, tok.line(), tok.column())?,
                 };
+
                 Ok((tok.clone(), resolved_type))
             })
             .collect::<Result<_, CompilerError>>()?;
 
         let param_types = resolved_params.iter().map(|(_, ty)| ty.clone()).collect();
-        let symbol = Symbol::MetSymbol {
+        let symbol = Symbol::Method {
             is_static,
             name: met_identifier.lexeme().to_string(),
             param_types,
@@ -528,7 +462,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
         self.enter_scope();
         for (tok, ty) in &resolved_params {
-            let param_symbol = Symbol::VarSymbol {
+            let param_symbol = Symbol::Var {
                 name: tok.lexeme().to_string(),
                 tol_type: ty.clone(),
             };
@@ -537,8 +471,10 @@ impl<'a> SemanticAnalyzer<'a> {
                 return Err(self.declared_in_scope_err(tok));
             }
         }
-
-        // NO exit_scope() call here, it will be called by analyze_method_body()
+        self.current_func_return_type = return_type.clone();
+        // println!("{:?}", self.symbol_table);
+        self.analyze_expression(block)?;
+        self.exit_scope();
 
         Ok(symbol)
     }
@@ -611,7 +547,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 };
 
-                if let Symbol::ParSymbol {
+                if let Symbol::Paraan {
                     param_types,
                     return_type,
                     ..
@@ -683,7 +619,7 @@ impl<'a> SemanticAnalyzer<'a> {
             } => {
                 let left_type = self.analyze_expression(left)?;
 
-                match self.type_table.get(&left_type) {
+                match self.type_table.get(&left_type.to_string()) {
                     Some(type_info) => match type_info.fields.get(member.lexeme()) {
                         Some(toltype) => Ok(toltype.to_owned()),
                         None => Err(CompilerError::new(
@@ -719,10 +655,10 @@ impl<'a> SemanticAnalyzer<'a> {
                     arg_types.push(self.analyze_expression(arg)?);
                 }
 
-                match self.type_table.get(&left_type) {
+                match self.type_table.get(&left_type.to_string()) {
                     Some(type_info) => match type_info.methods.get(callee.lexeme()) {
                         Some(met_sym) => {
-                            if let Symbol::MetSymbol {
+                            if let Symbol::Method {
                                 param_types,
                                 return_type,
                                 is_static,
@@ -786,16 +722,17 @@ impl<'a> SemanticAnalyzer<'a> {
                 line,
                 column,
             } => {
-                let left_type = self.resolve_type(left.lexeme(), left.line(), left.column())?;
+                let left_type = self.resolve_type(left, callee.line(), callee.column())?;
+
                 let mut arg_types = Vec::new();
                 for arg in args {
                     arg_types.push(self.analyze_expression(arg)?);
                 }
 
-                match self.type_table.get(&left_type) {
+                match self.type_table.get(&left_type.to_string()) {
                     Some(type_info) => match type_info.methods.get(callee.lexeme()) {
                         Some(met_sym) => {
-                            if let Symbol::MetSymbol {
+                            if let Symbol::Method {
                                 is_static,
                                 param_types,
                                 return_type,
@@ -847,17 +784,22 @@ impl<'a> SemanticAnalyzer<'a> {
                     )),
                 }
             }
-            Expr::Struct { name, fields } => {
-                let resolved_type = self.resolve_type(name.lexeme(), name.line(), name.column())?;
+            Expr::Struct {
+                name,
+                fields,
+                line,
+                column,
+            } => {
+                let resolved_type = self.resolve_type(name, *line, *column)?;
 
-                let type_info = match self.type_table.get(&resolved_type) {
+                let type_info = match self.type_table.get(&resolved_type.to_string()) {
                     Some(t_info) => t_info.clone(),
                     None => {
                         return Err(CompilerError::new(
                             &format!("Hindi rehistrado ang tipo na `{}`", &resolved_type),
                             ErrorKind::Error,
-                            name.line(),
-                            name.column(),
+                            *line,
+                            *column,
                         ));
                     }
                 };
@@ -870,8 +812,8 @@ impl<'a> SemanticAnalyzer<'a> {
                             type_info.fields.len()
                         ),
                         ErrorKind::Error,
-                        name.line(),
-                        name.column(),
+                        *line,
+                        *column,
                     ));
                 }
 
@@ -930,7 +872,7 @@ impl<'a> SemanticAnalyzer<'a> {
         let magic_symbols = vec![
             (
                 "print",
-                Symbol::ParSymbol {
+                Symbol::Paraan {
                     name: "print".to_string(),
                     param_types: vec![TolType::Sinulid],
                     return_type: TolType::Wala,
@@ -938,7 +880,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ),
             (
                 "println",
-                Symbol::ParSymbol {
+                Symbol::Paraan {
                     name: "println".to_string(),
                     param_types: vec![TolType::Sinulid],
                     return_type: TolType::Wala,
@@ -946,7 +888,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ),
             (
                 "alis",
-                Symbol::ParSymbol {
+                Symbol::Paraan {
                     name: "alis".to_string(),
                     param_types: vec![TolType::I32],
                     return_type: TolType::Wala,
@@ -999,6 +941,10 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn exit_scope(&mut self) {
         let _ = self.symbol_table.pop();
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.has_error
     }
 }
 

@@ -69,6 +69,7 @@ impl CompilerError {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ErrorKind {
     Error,
     Warning,

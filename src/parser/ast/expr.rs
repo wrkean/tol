@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{lexer::token::Token, parser::ast::stmt::Stmt};
+use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
@@ -45,15 +45,17 @@ pub enum Expr {
         column: usize,
     },
     StaticMethodCall {
-        left: Token,
+        left: TolType,
         callee: Token,
         args: Vec<Expr>,
         line: usize,
         column: usize,
     },
     Struct {
-        name: Token,
+        name: TolType,
         fields: Vec<(Token, Expr)>,
+        line: usize,
+        column: usize,
     },
 }
 
