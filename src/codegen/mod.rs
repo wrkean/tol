@@ -203,7 +203,7 @@ impl<'a> CodeGenerator<'a> {
                             let str_arg = self.gen_expression(&args[0]);
                             format!("puts({str_arg})")
                         }
-                        "exit" => {
+                        "alis" => {
                             let int_arg = self.gen_expression(&args[0]);
                             format!("exit({int_arg})")
                         }
