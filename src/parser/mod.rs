@@ -30,6 +30,9 @@ impl<'a> Parser<'a> {
             }
 
             let statement = self.parse_statement();
+            if let Err(e) = self.consume(TokenKind::SemiColon, self.expect_err("`;`")) {
+                e.display(self.source_path);
+            }
             match statement {
                 Ok(stmt) => statements.push(stmt),
                 Err(e) => {
@@ -45,16 +48,8 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<Stmt, CompilerError> {
         match self.peek().kind() {
             TokenKind::Paraan => self.parse_par(),
-            TokenKind::Ang => {
-                let ang_stmt = self.parse_ang();
-                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
-                ang_stmt
-            }
-            TokenKind::Ibalik => {
-                let ibalik_stmt = self.parse_ibalik();
-                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
-                ibalik_stmt
-            }
+            TokenKind::Ang => self.parse_ang(),
+            TokenKind::Ibalik => self.parse_ibalik(),
             TokenKind::Bagay => self.parse_bagay(),
             TokenKind::Itupad => self.parse_itupad(),
             _ => self.parse_expr_stmt(),
