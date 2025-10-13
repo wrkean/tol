@@ -232,7 +232,18 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         self.current_func_return_type = resolved_return.clone();
-        self.analyze_expression(block)?;
+        let last_expr_type = self.analyze_expression(block)?;
+        if !last_expr_type.is_assignment_compatible(&self.current_func_return_type) {
+            return Err(CompilerError::new(
+                &format!(
+                    "Hindi pwede mag return ng `{}` dahil ang kasalukuyang paraan ay umaasa ng `{}`",
+                    return_type, self.current_func_return_type
+                ),
+                ErrorKind::Error,
+                par_identifier.line(),
+                par_identifier.column(),
+            ));
+        }
         self.exit_scope();
 
         Ok(())
@@ -523,6 +534,7 @@ impl<'a> SemanticAnalyzer<'a> {
             },
             Expr::Block {
                 statements,
+                block_value,
                 // line,
                 // column,
                 ..
@@ -532,7 +544,10 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.analyze_stmt(statement);
                 }
                 self.exit_scope();
-                Ok(TolType::Unknown)
+
+                block_value
+                    .as_ref()
+                    .map_or_else(|| Ok(TolType::Wala), |expr| self.analyze_expression(expr))
             }
             Expr::FnCall { callee, args } => {
                 let symbol = match self.lookup_symbol(callee.lexeme()) {

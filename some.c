@@ -117,16 +117,6 @@ alis <=> Identifier
 ; <=> SemiColon
 } <=> RightBrace
 Eof <=> Eof
-[{"print": ParSymbol { name: "print", param_types: [Sinulid], return_type: Wala }, "Tao": BagaySymbol { name: "Tao" }, "Hayop": BagaySymbol { name: "Hayop" }, "println": ParSymbol { name: "println", param_types: [Sinulid], return_type: Wala }, "alis": ParSymbol { name: "alis", param_types: [I32], return_type: Wala }}, {"get_tuig": MetSymbol { is_static: false, name: "get_tuig", param_types: [Bagay("Tao")], return_type: U32 }}, {"ako": VarSymbol { name: "ako", tol_type: Bagay("Tao") }}]
-[{"print": ParSymbol { name: "print", param_types: [Sinulid], return_type: Wala }, "Tao": BagaySymbol { name: "Tao" }, "Hayop": BagaySymbol { name: "Hayop" }, "println": ParSymbol { name: "println", param_types: [Sinulid], return_type: Wala }, "alis": ParSymbol { name: "alis", param_types: [I32], return_type: Wala }}, {"bago": MetSymbol { is_static: true, name: "bago", param_types: [I32, U32], return_type: UnknownIdentifier("Tao") }, "get_tuig": MetSymbol { is_static: false, name: "get_tuig", param_types: [Bagay("Tao")], return_type: U32 }}, {"tuig": VarSymbol { name: "tuig", tol_type: U32 }, "edad": VarSymbol { name: "edad", tol_type: I32 }}]
-Tao
-UnknownIdentifier("Tao"), Bagay("Tao")
-i32
-I32, I32
-u32
-U32, U32
-[Bagay("Hayop"), Bagay("Tao")]
 #include<stdio.h>
 #include<stdlib.h>
-typedef struct Tao{int32_t edad;uint32_t tuig;}Tao;uint32_t get_tuig(Tao ako){return (ako.tuig);}Tao bago(int32_t edad,uint32_t tuig){return (struct Tao){.edad=edad,.tuig=tuig};}typedef struct Hayop{uint8_t edad;}Hayop;void __TOL_main__(){const Tao tao = bago(8, 10);const int32_t edad = (tao.edad);const uint32_t tuig = get_tuig(tao);puts("Kumusta mundo");;}int main(){__TOL_main__();return 0;}
-Binary compiled: ./exe
+typedef struct Tao{int32_t edad;uint32_t tuig;}Tao;uint32_t get_tuig(Tao ako)return (ako.tuig);Tao bago(int32_t edad,uint32_t tuig)return (struct Tao){.edad=edad,.tuig=tuig};typedef struct Hayop{uint8_t edad;}Hayop;void __TOL_main__()const Tao tao = bago(8, 10);const int32_t edad = (tao.edad);const uint32_t tuig = get_tuig(tao);puts("Kumusta mundo");exit(1);int main(){__TOL_main__();return 0;}

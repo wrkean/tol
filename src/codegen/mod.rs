@@ -1,8 +1,11 @@
 use crate::{
+    codegen::block_context::BlockContext,
     lexer::token::Token,
     parser::ast::{expr::Expr, stmt::Stmt},
     toltype::TolType,
 };
+
+pub mod block_context;
 
 pub struct CodeGenerator<'a> {
     ast: &'a Stmt,
@@ -23,9 +26,7 @@ impl<'a> CodeGenerator<'a> {
 
     pub fn generate(&mut self) -> &String {
         if let Stmt::Program(statements) = self.ast {
-            for statement in statements {
-                self.gen_statement(statement);
-            }
+            self.output.push_str(&self.gen_statements(statements));
         }
 
         // Call the main function defined by the user in C's main function
@@ -36,7 +37,16 @@ impl<'a> CodeGenerator<'a> {
         &self.output
     }
 
-    fn gen_statement(&mut self, stmt: &Stmt) {
+    fn gen_statements(&self, statements: &[Stmt]) -> String {
+        let mut out = String::new();
+        for stmt in statements {
+            out.push_str(&self.gen_statement(stmt));
+        }
+
+        out
+    }
+
+    fn gen_statement(&self, stmt: &Stmt) -> String {
         match stmt {
             Stmt::Ang {
                 mutable,
@@ -50,9 +60,7 @@ impl<'a> CodeGenerator<'a> {
                 let id_c = ang_identifier.lexeme();
                 let rhs_c = self.gen_expression(rhs);
 
-                let ang_c = format!("{modifier_c}{type_c} {id_c} = {rhs_c};");
-
-                self.output.push_str(&ang_c);
+                format!("{modifier_c}{type_c} {id_c} = {rhs_c};")
             }
             Stmt::Par {
                 par_identifier,
@@ -68,19 +76,15 @@ impl<'a> CodeGenerator<'a> {
                     _ => id_c,
                 };
                 let params_c = self.gen_params(params, None);
+                let block_c = self.gen_block(block, BlockContext::Function);
 
-                let par_c = format!("{type_c} {id_c}{params_c}");
-                self.output.push_str(&par_c);
-                self.gen_expression(block);
+                format!("{type_c} {id_c}{params_c}{block_c}")
             }
             Stmt::Ibalik { rhs, .. } => {
-                let ibalik_c = format!("return {};", self.gen_expression(rhs));
-                self.output.push_str(&ibalik_c);
+                format!("return {};", self.gen_expression(rhs))
             }
             Stmt::ExprS { expr, .. } => {
-                let expr_c = self.gen_expression(expr);
-                self.output.push_str(&expr_c);
-                self.output.push(';');
+                format!("{};", self.gen_expression(expr))
             }
             Stmt::Bagay {
                 bagay_identifier,
@@ -91,9 +95,7 @@ impl<'a> CodeGenerator<'a> {
                 for field in fields {
                     fields_c.push_str(&format!("{} {};", field.1.as_c(), field.0.lexeme()));
                 }
-                self.output.push_str(&format!(
-                    "typedef struct {bagay_id_c}{{{fields_c}}}{bagay_id_c};"
-                ));
+                format!("typedef struct {bagay_id_c}{{{fields_c}}}{bagay_id_c};")
             }
             Stmt::Itupad {
                 itupad_for,
@@ -101,17 +103,22 @@ impl<'a> CodeGenerator<'a> {
                 ..
             } => {
                 if let Stmt::ItupadBlock { methods, .. } = &**itupad_block {
+                    let mut out = String::new();
                     for method in methods {
-                        self.gen_method(method, itupad_for);
+                        out.push_str(&self.gen_method(method, itupad_for));
                     }
+
+                    out
+                } else {
+                    unreachable!("Itupadblock mismatch");
                 }
             }
-            Stmt::Program(_) => {}
-            _ => {}
+            Stmt::Program(statements) => self.gen_statements(statements),
+            _ => "".to_string(),
         }
     }
 
-    fn gen_method(&mut self, method: &Stmt, itupad_for: &TolType) {
+    fn gen_method(&self, method: &Stmt, itupad_for: &TolType) -> String {
         if let Stmt::Method {
             met_identifier,
             params,
@@ -123,9 +130,9 @@ impl<'a> CodeGenerator<'a> {
             let type_c = return_type.as_c();
             let id_c = met_identifier.lexeme();
             let params_c = self.gen_params(params, Some(itupad_for));
+            let block_c = self.gen_block(block, BlockContext::Function);
 
-            self.output.push_str(&format!("{type_c} {id_c}{params_c}"));
-            self.gen_expression(block);
+            format!("{type_c} {id_c}{params_c}{block_c}")
         } else {
             unreachable!("Stmt is not a method");
         }
@@ -151,7 +158,7 @@ impl<'a> CodeGenerator<'a> {
         c_params
     }
 
-    fn gen_expression(&mut self, expr: &Expr) -> String {
+    fn gen_expression(&self, expr: &Expr) -> String {
         match expr {
             Expr::IntLit(tok) | Expr::FloatLit(tok) | Expr::Identifier(tok) => {
                 tok.lexeme().to_string()
@@ -167,15 +174,7 @@ impl<'a> CodeGenerator<'a> {
                     self.gen_expression(right)
                 )
             }
-            Expr::Block { statements, .. } => {
-                self.output.push('{');
-                for statement in statements {
-                    self.gen_statement(statement);
-                }
-                self.output.push('}');
-
-                String::from("")
-            }
+            Expr::Block { .. } => self.gen_block(expr, BlockContext::StandAlone),
             Expr::FnCall { callee, args } => {
                 let mut args_str_c = String::from("(");
                 for arg in args {
@@ -262,6 +261,29 @@ impl<'a> CodeGenerator<'a> {
                 format!("(struct {}){}", struct_name_c, struct_block_c)
             }
             _ => String::from("Wala"),
+        }
+    }
+
+    fn gen_block(&self, block: &Expr, context: BlockContext) -> String {
+        if let Expr::Block {
+            statements,
+            block_value,
+            ..
+        } = block
+        {
+            let mut out = String::from("{");
+            for statement in statements {
+                out.push_str(&self.gen_statement(statement));
+            }
+
+            if let (BlockContext::Function, Some(val)) = (context, block_value) {
+                out.push_str(&format!("return {}", self.gen_expression(val)));
+            }
+            out.push('}');
+
+            out
+        } else {
+            unreachable!("block is not Expr::Block")
         }
     }
 }

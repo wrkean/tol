@@ -5,7 +5,7 @@ bagay Tao {
 
 itupad Tao {
     paraan get_tuig(ako) -> u32 {
-        ibalik ako.tuig;
+        ako.tuig
     }
 
     paraan bago(edad: i32, tuig: u32) -> Tao {
