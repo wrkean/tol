@@ -1,7 +1,10 @@
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
-    parser::ast::{expr::Expr, stmt::Stmt},
+    parser::ast::{
+        expr::Expr,
+        stmt::{KungBranch, Stmt},
+    },
     toltype::TolType,
 };
 
@@ -59,6 +62,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Bagay => self.parse_bagay(),
             TokenKind::Itupad => self.parse_itupad(),
+            TokenKind::Kung => self.parse_kung(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -496,38 +500,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
-        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
-
-        let mut fields = Vec::new();
-        while self.peek().kind() != &TokenKind::RightBrace {
-            let field_name = self
-                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
-                .clone();
-
-            self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
-
-            let field_expr = self.parse_expression(0)?;
-
-            if self.peek().kind() == &TokenKind::Comma {
-                self.advance();
-            } else if self.peek().kind() != &TokenKind::RightBrace {
-                return Err(self.expect_err("`}` o `,`"));
-            }
-
-            fields.push((field_name, field_expr));
-        }
-
-        self.advance();
-
-        Ok(Expr::Struct {
-            name: TolType::UnknownIdentifier(struct_name.lexeme().to_string()),
-            fields,
-            line: struct_name.line(),
-            column: struct_name.column(),
-        })
-    }
-
     fn led(
         &mut self,
         op: &Token,
@@ -592,6 +564,85 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_kung(&mut self) -> Result<Stmt, CompilerError> {
+        let kung_tok = self
+            .consume(TokenKind::Kung, self.expect_err("`kung`"))?
+            .clone();
+        let condition = self.parse_expression(0)?;
+
+        self.consume(
+            TokenKind::Question,
+            self.expect_err("`?`")
+                .add_help("Lagyan ng `?` pagkatapos ng expresyon"),
+        )?;
+
+        let block = self.parse_block()?;
+
+        let mut branches = vec![KungBranch {
+            condition: Some(condition),
+            block,
+        }];
+        while self.peek().kind() == &TokenKind::KungDi {
+            self.advance();
+            let condition = self.parse_expression(0)?;
+            self.consume(
+                TokenKind::Question,
+                self.expect_err("`?`")
+                    .add_help("Lagyan ng `?` pagkatapos ng expresyon"),
+            )?;
+            branches.push(KungBranch {
+                condition: Some(condition),
+                block: self.parse_block()?,
+            });
+        }
+
+        if self.peek().kind() == &TokenKind::KungWala {
+            self.advance();
+            branches.push(KungBranch {
+                condition: None,
+                block: self.parse_block()?,
+            })
+        }
+
+        Ok(Stmt::Kung {
+            branches,
+            line: kung_tok.line(),
+            column: kung_tok.column(),
+        })
+    }
+
+    fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
+        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
+
+        let mut fields = Vec::new();
+        while self.peek().kind() != &TokenKind::RightBrace {
+            let field_name = self
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+                .clone();
+
+            self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
+
+            let field_expr = self.parse_expression(0)?;
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::RightBrace {
+                return Err(self.expect_err("`}` o `,`"));
+            }
+
+            fields.push((field_name, field_expr));
+        }
+
+        self.advance();
+
+        Ok(Expr::Struct {
+            name: TolType::UnknownIdentifier(struct_name.lexeme().to_string()),
+            fields,
+            line: struct_name.line(),
+            column: struct_name.column(),
+        })
+    }
+
     fn parse_fncall(&mut self, callee: &Token) -> Result<Expr, CompilerError> {
         self.advance(); // Consumes `(`
 
@@ -618,16 +669,13 @@ impl<'a> Parser<'a> {
         self.advance();
 
         while !self.is_at_end() {
-            if let TokenKind::SemiColon | TokenKind::RightBrace = self.peek().kind() {
-                self.advance();
-                return;
-            }
-
             match self.peek().kind() {
                 TokenKind::Paraan
                 | TokenKind::Ang
                 | TokenKind::Ibalik
                 | TokenKind::Bagay
+                | TokenKind::Kung
+                | TokenKind::At
                 | TokenKind::Itupad => return,
                 _ => {}
             }

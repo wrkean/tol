@@ -53,4 +53,15 @@ pub enum Stmt {
         line: usize,
         column: usize,
     },
+    Kung {
+        branches: Vec<KungBranch>,
+        line: usize,
+        column: usize,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct KungBranch {
+    pub condition: Option<Expr>,
+    pub block: Expr,
 }

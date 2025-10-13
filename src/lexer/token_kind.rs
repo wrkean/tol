@@ -7,6 +7,9 @@ pub enum TokenKind {
     Ibalik,
     Bagay,
     Itupad,
+    Kung,
+    KungDi,
+    KungWala,
 
     Identifier,
 
@@ -32,6 +35,7 @@ pub enum TokenKind {
     Slash,
     Percent,
     At,
+    Question,
 
     // Assignment operators
     Equal,

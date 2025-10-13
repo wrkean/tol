@@ -1,9 +1,15 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    net::ToSocketAddrs,
+};
 
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
-    parser::ast::{expr::Expr, stmt::Stmt},
+    parser::ast::{
+        expr::Expr,
+        stmt::{KungBranch, Stmt},
+    },
     symbol::Symbol,
     toltype::{TolType, type_info::TypeInfo},
 };
@@ -30,6 +36,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
         // Declare magic functions first
         new_analyzer.declare_magic_funcs();
+        new_analyzer.declare_primitive_types();
 
         new_analyzer
     }
@@ -123,6 +130,16 @@ impl<'a> SemanticAnalyzer<'a> {
                     e.display(self.source_path);
                 }
             }
+            Stmt::Kung {
+                branches,
+                line,
+                column,
+            } => self
+                .analyze_kung(branches, *line, *column)
+                .unwrap_or_else(|e| {
+                    self.has_error = true;
+                    e.display(self.source_path);
+                }),
             // TODO: analyze ts
             Stmt::ItupadBlock { .. } => {}
             Stmt::Method { .. } => {}
@@ -488,6 +505,23 @@ impl<'a> SemanticAnalyzer<'a> {
         self.exit_scope();
 
         Ok(symbol)
+    }
+
+    fn analyze_kung(
+        &mut self,
+        branches: &[KungBranch],
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
+        for branch in branches {
+            if let Some(s) = &branch.condition {
+                self.analyze_expression(s)?;
+            }
+
+            self.analyze_expression(&branch.block)?;
+        }
+
+        Ok(())
     }
 
     fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
@@ -914,6 +948,11 @@ impl<'a> SemanticAnalyzer<'a> {
         for (name, sym) in magic_symbols {
             self.declare_symbol(name, sym);
         }
+    }
+
+    fn declare_primitive_types(&mut self) {
+        self.type_table
+            .insert("i32".to_string(), TypeInfo::new(TolType::I32));
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {

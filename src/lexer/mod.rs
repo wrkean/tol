@@ -30,6 +30,9 @@ impl<'a> Lexer<'a> {
             ("ibalik", TokenKind::Ibalik),
             ("bagay", TokenKind::Bagay),
             ("itupad", TokenKind::Itupad),
+            ("kung", TokenKind::Kung),
+            ("kungdi", TokenKind::KungDi),
+            ("kungwala", TokenKind::KungWala),
         ]);
         Self {
             source,
@@ -80,6 +83,7 @@ impl<'a> Lexer<'a> {
             ',' => self.add_token(TokenKind::Comma, None),
             '.' => self.add_token(TokenKind::Dot, None),
             '@' => self.add_token(TokenKind::At, None),
+            '?' => self.add_token(TokenKind::Question, None),
             ':' => {
                 if self.match_char(':') {
                     self.add_token(TokenKind::ColonColon, None);

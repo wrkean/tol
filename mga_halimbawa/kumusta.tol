@@ -19,10 +19,19 @@ bagay Hayop {
     edad: u8,
 }
 
+itupad i32 {
+    paraan idagdag_sa(ako, iba: i32) -> i32 {
+        ibalik ako + iba;
+    }
+}
+
 paraan una() {
     ang tao: Tao = Tao::bago(8, 10);
     ang edad: i32 = tao.edad;
     ang tuig: u32 = tao.get_tuig();
+
+    ang dagdag: i32 = 5;
+    ang resulta: i32 = dagdag.idagdag_sa(1);
 
     @println("Kumusta mundo");
     @alis(1);

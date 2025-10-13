@@ -113,6 +113,31 @@ impl<'a> CodeGenerator<'a> {
                     unreachable!("Itupadblock mismatch");
                 }
             }
+            Stmt::Kung { branches, .. } => {
+                let mut if_c = String::new();
+                for (i, branch) in branches.iter().enumerate() {
+                    if i == 0 {
+                        if_c.push_str(&format!(
+                            "if ({}){}",
+                            self.gen_expression(branch.condition.as_ref().unwrap()),
+                            self.gen_block(&branch.block, BlockContext::Function)
+                        ));
+                    } else if let Some(expr) = &branch.condition {
+                        if_c.push_str(&format!(
+                            "else if ({}){}",
+                            self.gen_expression(expr),
+                            self.gen_block(&branch.block, BlockContext::Function)
+                        ));
+                    } else if branch.condition.is_none() {
+                        if_c.push_str(&format!(
+                            "else {}",
+                            self.gen_block(&branch.block, BlockContext::Function)
+                        ));
+                    }
+                }
+
+                if_c
+            }
             Stmt::Program(statements) => self.gen_statements(statements),
             _ => "".to_string(),
         }
@@ -219,10 +244,13 @@ impl<'a> CodeGenerator<'a> {
             } => {
                 let mut args_str_c = String::from("(");
                 args_str_c.push_str(&self.gen_expression(left));
+                if args.len() == 1 {
+                    args_str_c.push(',');
+                }
                 for arg in args {
                     args_str_c.push_str(&self.gen_expression(arg));
                     if arg != args.last().unwrap() {
-                        args_str_c.push_str(", ");
+                        args_str_c.push(',');
                     }
                 }
                 args_str_c.push(')');
@@ -277,7 +305,7 @@ impl<'a> CodeGenerator<'a> {
             }
 
             if let (BlockContext::Function, Some(val)) = (context, block_value) {
-                out.push_str(&format!("return {}", self.gen_expression(val)));
+                out.push_str(&format!("return {};", self.gen_expression(val)));
             }
             out.push('}');
 
