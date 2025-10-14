@@ -474,7 +474,7 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);
-                } else if self.peek().kind() == &TokenKind::LeftBrace {
+                } else if self.peek().kind() == &TokenKind::Colon {
                     return self.parse_struct_expr(&current_tok);
                 }
 
@@ -612,6 +612,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
+        self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
         self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
 
         let mut fields = Vec::new();
