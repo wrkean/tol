@@ -79,6 +79,8 @@ impl<'a> Lexer<'a> {
             ')' => self.add_token(TokenKind::RightParen, None),
             '{' => self.add_token(TokenKind::LeftBrace, None),
             '}' => self.add_token(TokenKind::RightBrace, None),
+            '[' => self.add_token(TokenKind::LeftBracket, None),
+            ']' => self.add_token(TokenKind::RightBracket, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
             '.' => self.add_token(TokenKind::Dot, None),

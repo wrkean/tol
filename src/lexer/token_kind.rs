@@ -23,6 +23,8 @@ pub enum TokenKind {
     RightBrace,
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
     Colon,
     ColonColon,
     Comma,
