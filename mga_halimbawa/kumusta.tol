@@ -9,7 +9,7 @@ itupad Tao {
     }
 
     paraan bago(edad: i32, tuig: u32) -> Tao {
-        ibalik Tao {
+        ibalik Tao: {
             edad: edad, tuig: tuig,
         };
     }
@@ -32,6 +32,10 @@ paraan una() {
 
     ang dagdag: i32 = 5;
     ang resulta: i32 = dagdag.idagdag_sa(1);
+
+    kung dagdag {
+        2;
+    }
 
     @println("Kumusta mundo");
     @alis(1);

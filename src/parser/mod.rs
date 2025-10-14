@@ -569,13 +569,6 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Kung, self.expect_err("`kung`"))?
             .clone();
         let condition = self.parse_expression(0)?;
-
-        self.consume(
-            TokenKind::Question,
-            self.expect_err("`?`")
-                .add_help("Lagyan ng `?` pagkatapos ng expresyon"),
-        )?;
-
         let block = self.parse_block()?;
 
         let mut branches = vec![KungBranch {
@@ -585,11 +578,6 @@ impl<'a> Parser<'a> {
         while self.peek().kind() == &TokenKind::KungDi {
             self.advance();
             let condition = self.parse_expression(0)?;
-            self.consume(
-                TokenKind::Question,
-                self.expect_err("`?`")
-                    .add_help("Lagyan ng `?` pagkatapos ng expresyon"),
-            )?;
             branches.push(KungBranch {
                 condition: Some(condition),
                 block: self.parse_block()?,
