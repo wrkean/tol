@@ -380,7 +380,7 @@ impl<'a> Parser<'a> {
 
     fn parse_type(&mut self) -> Result<TolType, CompilerError> {
         // NOTE: Only works for primitives for now
-        match self.peek().lexeme() {
+        let initial_type = match self.peek().lexeme() {
             "i8" => {
                 self.advance();
                 Ok(TolType::I8)
@@ -444,6 +444,38 @@ impl<'a> Parser<'a> {
             _ => Ok(TolType::UnknownIdentifier(
                 self.advance().lexeme().to_string(),
             )),
+        }?;
+
+        match self.peek().kind() {
+            TokenKind::LeftBracket => {
+                self.advance();
+
+                let mut len = None;
+                if self.peek().kind() != &TokenKind::RightBracket {
+                    let int_lit = self.consume(
+                        TokenKind::IntLit,
+                        self.expect_err("literal na integer")
+                            .add_note("Literal na integer muna aangnpwede sa loob ng [] :("),
+                    )?;
+                    len = match int_lit.lexeme().parse::<usize>() {
+                        Ok(val) => Some(val),
+                        Err(_) => {
+                            return Err(CompilerError::new(
+                                &format!("Nabigong gawing `usukat` ang {}", int_lit.lexeme()),
+                                ErrorKind::Error,
+                                int_lit.line(),
+                                int_lit.column(),
+                            )
+                            .add_note("Siguraduhing hindi ito negatibong numero"));
+                        }
+                    };
+                }
+
+                self.consume(TokenKind::RightBracket, self.expect_err("`]`"))?;
+
+                Ok(TolType::Array(Box::new(initial_type), len))
+            }
+            _ => Ok(initial_type),
         }
     }
 
@@ -494,6 +526,26 @@ impl<'a> Parser<'a> {
                 let fncall = self.parse_fncall(&callee)?;
                 Ok(Expr::MagicFnCall {
                     fncall: Box::new(fncall),
+                })
+            }
+            TokenKind::LeftBracket => {
+                let mut elements = Vec::new();
+                while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBracket {
+                    elements.push(self.parse_expression(0)?);
+
+                    if self.peek().kind() == &TokenKind::Comma {
+                        self.advance();
+                    } else if self.peek().kind() != &TokenKind::RightBracket {
+                        return Err(self.expect_err("`]` o `,`"));
+                    }
+                }
+
+                self.consume(TokenKind::RightBracket, self.expect_err("`}`"))?;
+
+                Ok(Expr::Array {
+                    elements,
+                    line: current_tok.line(),
+                    column: current_tok.column(),
                 })
             }
             _ => Err(self.expect_err("expresyon")),

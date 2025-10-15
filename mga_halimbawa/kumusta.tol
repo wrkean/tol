@@ -37,6 +37,8 @@ paraan una() {
         2;
     }
 
+    ang array: i32[5] = [1, 2, 4, 10];
+
     @println("Kumusta mundo");
     @alis(1);
 }
