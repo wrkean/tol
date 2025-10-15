@@ -852,9 +852,15 @@ impl<'a> SemanticAnalyzer<'a> {
             } => {
                 let assumed_element_type = self.analyze_expression(&elements[0])?;
 
-                for elem in elements[1..elements.len() - 1].iter() {
-                    let elem_type = self.analyze_expression(elem)?;
-                    elem_type.is_assignment_compatible(&assumed_element_type, *line, *column)?;
+                if elements.len() > 1 {
+                    for elem in elements[1..elements.len() - 1].iter() {
+                        let elem_type = self.analyze_expression(elem)?;
+                        elem_type.is_assignment_compatible(
+                            &assumed_element_type,
+                            *line,
+                            *column,
+                        )?;
+                    }
                 }
 
                 Ok(TolType::Array(
