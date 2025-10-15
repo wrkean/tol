@@ -1,9 +1,11 @@
 use core::panic;
 use std::fmt;
 
+use crate::error::{CompilerError, ErrorKind};
+
 pub mod type_info;
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TolType {
     // Integers
     // Signed
@@ -39,6 +41,7 @@ pub enum TolType {
     // Composite
     Bagay(String),
     UnknownIdentifier(String),
+    Array(Box<TolType>, Option<usize>),
 
     // Special
     AkoType,
@@ -74,44 +77,78 @@ impl TolType {
         (self.is_integer() && other.is_integer()) || (self.is_float() && other.is_float())
     }
 
-    pub fn is_assignment_compatible(&self, other: &Self) -> bool {
+    pub fn is_assignment_compatible(
+        &self,
+        other: &Self,
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
         use TolType::*;
 
+        // Helper to build errors
+        let err = |msg: String| Err(CompilerError::new(&msg, ErrorKind::Error, line, column));
+
+        if self == other {
+            return Ok(());
+        }
+
         match (self, other) {
-            (UnsizedInt, o) => o.is_integer(),
-            (UnsizedFloat, o) => o.is_float(),
-            (Bagay(s1), UnknownIdentifier(s2)) | (UnknownIdentifier(s1), Bagay(s2)) => s1 == s2,
-            _ => self == other,
+            (UnsizedInt, o) | (UnsizedFloat, o) if o.is_integer() || o.is_float() => Ok(()),
+
+            (Bagay(a), UnknownIdentifier(b)) | (UnknownIdentifier(a), Bagay(b)) if a == b => Ok(()),
+
+            (Array(t1, right_len), Array(t2, left_len)) => {
+                t1.is_assignment_compatible(t2, line, column)?;
+
+                match (left_len, right_len) {
+                    (Some(llen), Some(rlen)) if llen < rlen => err(format!(
+                        "Mas maliit ang sukat na ibinigay sa tipo ({llen}) kumpara sa expresyon ({rlen})"
+                    )),
+                    (None, Some(0)) => err(
+                        "Hindi pwede ang walang laman na array kung walang ibinigay na sukat sa tipo"
+                            .into(),
+                    ),
+                    _ => Ok(()),
+                }
+            }
+
+            // Fallback: incompatible types
+            _ => err(format!(
+                "Ang tipong `{}` ay hindi bagay sa tipong `{}`",
+                self, other
+            )),
         }
     }
 
     pub fn as_c(&self) -> String {
         match self {
-            TolType::I8 => "int8_t",
-            TolType::I16 => "int16_t",
-            TolType::I32 => "int32_t",
-            TolType::I64 => "int64_t",
-            TolType::ISukat => "ptrdiff_t",
-            TolType::U8 => "uint8_t",
-            TolType::U16 => "uint16_t",
-            TolType::U32 => "uint32_t",
-            TolType::U64 => "uint64_t",
-            TolType::USukat => "size_t",
-            TolType::Lutang => "float",
-            TolType::DobleTang => "double",
-            TolType::Bool => "bool",
-            TolType::Kar => "char",
-            TolType::Wala => "void",
-            TolType::Sinulid => "char*",
-            TolType::Bagay(s) => s,
-            TolType::UnknownIdentifier(s) => s,
+            TolType::I8 => "int8_t".to_string(),
+            TolType::I16 => "int16_t".to_string(),
+            TolType::I32 => "int32_t".to_string(),
+            TolType::I64 => "int64_t".to_string(),
+            TolType::ISukat => "ptrdiff_t".to_string(),
+            TolType::U8 => "uint8_t".to_string(),
+            TolType::U16 => "uint16_t".to_string(),
+            TolType::U32 => "uint32_t".to_string(),
+            TolType::U64 => "uint64_t".to_string(),
+            TolType::USukat => "size_t".to_string(),
+            TolType::Lutang => "float".to_string(),
+            TolType::DobleTang => "double".to_string(),
+            TolType::Bool => "bool".to_string(),
+            TolType::Kar => "char".to_string(),
+            TolType::Wala => "void".to_string(),
+            TolType::Sinulid => "char*".to_string(),
+            TolType::Bagay(s) => s.to_string(),
+            TolType::UnknownIdentifier(s) => s.to_string(),
+            TolType::Array(t, _) => t.as_c(),
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
-                panic!("If this panic! gets triggered, something is VERY wrong with the semantic analyzer")
+                panic!(
+                    "If this panic! gets triggered, something is VERY wrong with the semantic analyzer"
+                )
             }
         }
-        .to_string()
     }
 }
 
@@ -138,6 +175,7 @@ impl fmt::Display for TolType {
             TolType::UnsizedFloat => write!(f, "literal na lutang"),
             TolType::Bagay(s) => write!(f, "{}", s),
             TolType::UnknownIdentifier(s) => write!(f, "{}", s),
+            TolType::Array(t, _) => write!(f, "[{}]", t),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

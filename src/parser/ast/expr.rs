@@ -58,6 +58,11 @@ pub enum Expr {
         line: usize,
         column: usize,
     },
+    Array {
+        elements: Vec<Expr>,
+        line: usize,
+        column: usize,
+    },
 }
 
 impl fmt::Display for Expr {

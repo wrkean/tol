@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    net::ToSocketAddrs,
-};
+use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
     error::{CompilerError, ErrorKind},
@@ -159,17 +156,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
         let rhs_type = self.analyze_expression(rhs)?;
         // println!("{:?}, {:?}", rhs_type, ang_type);
-        if !rhs_type.is_assignment_compatible(&ang_type) {
-            return Err(CompilerError::new(
-                &format!(
-                    "Ang tipong `{}` ay hindi pwede ilagay sa `{}`",
-                    rhs_type, ang_type,
-                ),
-                ErrorKind::Error,
-                *line,
-                *column,
-            ));
-        }
+        rhs_type.is_assignment_compatible(&ang_type, *line, *column)?;
 
         let var_symbol = Symbol::Var {
             name: ang_identifier.lexeme().to_string(),
@@ -250,17 +237,11 @@ impl<'a> SemanticAnalyzer<'a> {
         }
         self.current_func_return_type = resolved_return.clone();
         let last_expr_type = self.analyze_expression(block)?;
-        if !last_expr_type.is_assignment_compatible(&self.current_func_return_type) {
-            return Err(CompilerError::new(
-                &format!(
-                    "Hindi pwede mag return ng `{}` dahil ang kasalukuyang paraan ay umaasa ng `{}`",
-                    return_type, self.current_func_return_type
-                ),
-                ErrorKind::Error,
-                par_identifier.line(),
-                par_identifier.column(),
-            ));
-        }
+        last_expr_type.is_assignment_compatible(
+            &self.current_func_return_type,
+            par_identifier.line(),
+            par_identifier.column(),
+        )?;
         self.exit_scope();
 
         Ok(())
@@ -283,17 +264,7 @@ impl<'a> SemanticAnalyzer<'a> {
             ));
         }
 
-        if !return_type.is_assignment_compatible(&self.current_func_return_type) {
-            return Err(CompilerError::new(
-                &format!(
-                    "Hindi pwede mag return ng `{}` dahil ang kasalukuyang paraan ay umaasa ng `{}`",
-                    return_type, self.current_func_return_type
-                ),
-                ErrorKind::Error,
-                *line,
-                *column,
-            ));
-        }
+        return_type.is_assignment_compatible(&self.current_func_return_type, *line, *column)?;
 
         Ok(())
     }
@@ -645,14 +616,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     //     ));
                     // }
                     for (arg, param) in arg_types.iter().zip(&param_types_) {
-                        if !arg.is_assignment_compatible(param) {
-                            return Err(CompilerError::new(
-                                &format!("Hindi pwede ilagay ang {arg} sa {param}"),
-                                ErrorKind::Error,
-                                callee.line(),
-                                callee.column(),
-                            ));
-                        }
+                        arg.is_assignment_compatible(param, callee.line(), callee.column())?;
                     }
 
                     return Ok(return_type_);
@@ -723,14 +687,7 @@ impl<'a> SemanticAnalyzer<'a> {
                                     ));
                                 }
 
-                                if let Err(e) = Self::check_call(&arg_types, param_types) {
-                                    return Err(CompilerError::new(
-                                        e,
-                                        ErrorKind::Error,
-                                        *line,
-                                        *column,
-                                    ));
-                                }
+                                Self::check_call(&arg_types, param_types, *line, *column)?;
 
                                 Ok(return_type.clone())
                             } else {
@@ -800,14 +757,7 @@ impl<'a> SemanticAnalyzer<'a> {
                                     ));
                                 }
 
-                                if let Err(e) = Self::check_call(&arg_types, param_types) {
-                                    return Err(CompilerError::new(
-                                        e,
-                                        ErrorKind::Error,
-                                        *line,
-                                        *column,
-                                    ));
-                                }
+                                Self::check_call(&arg_types, param_types, *line, *column)?;
 
                                 Ok(return_type.clone())
                             } else {
@@ -872,14 +822,11 @@ impl<'a> SemanticAnalyzer<'a> {
 
                     match type_info.fields.get(field_name) {
                         Some(t) => {
-                            if !field_type.is_assignment_compatible(t) {
-                                return Err(CompilerError::new(
-                                    &format!("Hindi pwede ilagay ang {} sa {}", field_type, t),
-                                    ErrorKind::Error,
-                                    field_tok.line(),
-                                    field_tok.column(),
-                                ));
-                            }
+                            field_type.is_assignment_compatible(
+                                t,
+                                field_tok.line(),
+                                field_tok.column(),
+                            )?;
                         }
                         None => {
                             return Err(CompilerError::new(
@@ -897,21 +844,45 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 Ok(resolved_type)
             }
+            Expr::Array {
+                elements,
+                line,
+                column,
+                ..
+            } => {
+                let assumed_element_type = self.analyze_expression(&elements[0])?;
+
+                for elem in elements[1..elements.len() - 1].iter() {
+                    let elem_type = self.analyze_expression(elem)?;
+                    elem_type.is_assignment_compatible(&assumed_element_type, *line, *column)?;
+                }
+
+                Ok(TolType::Array(
+                    Box::new(assumed_element_type),
+                    Some(elements.len()),
+                ))
+            }
             _ => Ok(TolType::Wala),
         }
     }
 
-    fn check_call(args: &[TolType], params: &[TolType]) -> Result<(), &'static str> {
+    fn check_call(
+        args: &[TolType],
+        params: &[TolType],
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
         if args.len() != params.len() {
-            return Err("Ang bilang ng argumento ay hindi pareho sa parameter");
+            return Err(CompilerError::new(
+                "Ang bilang ng argumento ay hindi pareho sa parameter",
+                ErrorKind::Error,
+                line,
+                column,
+            ));
         }
 
-        if !args
-            .iter()
-            .zip(params.iter())
-            .all(|(arg, param)| arg.is_assignment_compatible(param))
-        {
-            return Err("Hindi wastong tipo ang argumento para sa parameter");
+        for (arg, param) in args.iter().zip(params) {
+            arg.is_assignment_compatible(param, line, column)?;
         }
 
         Ok(())

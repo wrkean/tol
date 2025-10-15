@@ -57,7 +57,13 @@ impl<'a> CodeGenerator<'a> {
             } => {
                 let modifier_c = if !mutable { "const " } else { "" };
                 let type_c = ang_type.as_c();
-                let id_c = ang_identifier.lexeme();
+                let id_c = match ang_type {
+                    TolType::Array(_, len) => match len {
+                        Some(l) => format!("{}[{}]", ang_identifier.lexeme(), l),
+                        None => format!("{}[]", ang_identifier.lexeme()),
+                    },
+                    _ => ang_identifier.lexeme().to_string(),
+                };
                 let rhs_c = self.gen_expression(rhs);
 
                 format!("{modifier_c}{type_c} {id_c} = {rhs_c};")
@@ -287,6 +293,19 @@ impl<'a> CodeGenerator<'a> {
                 struct_block_c.push('}');
 
                 format!("(struct {}){}", struct_name_c, struct_block_c)
+            }
+            Expr::Array { elements, .. } => {
+                let mut array_c = String::from("{");
+
+                for (i, element) in elements.iter().enumerate() {
+                    array_c.push_str(&self.gen_expression(element));
+                    if i != elements.len() - 1 {
+                        array_c.push_str(", ");
+                    }
+                }
+                array_c.push('}');
+
+                array_c
             }
             _ => String::from("Wala"),
         }
