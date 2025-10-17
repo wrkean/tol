@@ -10,6 +10,7 @@ pub enum Stmt {
         block: Expr,
         line: usize,
         column: usize,
+        id: usize,
     },
     Method {
         is_static: bool,
@@ -19,6 +20,7 @@ pub enum Stmt {
         block: Expr,
         line: usize,
         column: usize,
+        id: usize,
     },
     Ang {
         mutable: bool,
@@ -27,36 +29,43 @@ pub enum Stmt {
         rhs: Expr,
         line: usize,
         column: usize,
+        id: usize,
     },
     Ibalik {
         rhs: Expr,
         line: usize,
         column: usize,
+        id: usize,
     },
     ExprS {
         expr: Expr,
         line: usize,
         column: usize,
+        id: usize,
     },
     Bagay {
         bagay_identifier: Token,
         fields: Vec<(Token, TolType)>,
+        id: usize,
     },
     Itupad {
         itupad_for: TolType,
         itupad_block: Box<Stmt>,
         line: usize,
         column: usize,
+        id: usize,
     },
     ItupadBlock {
         methods: Vec<Stmt>,
         line: usize,
         column: usize,
+        id: usize,
     },
     Kung {
         branches: Vec<KungBranch>,
         line: usize,
         column: usize,
+        id: usize,
     },
 }
 

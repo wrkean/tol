@@ -4,39 +4,57 @@ use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
-    IntLit(Token),
-    FloatLit(Token),
-    StringLit(Token),
-    Identifier(Token),
+    IntLit {
+        token: Token,
+        id: usize,
+    },
+    FloatLit {
+        token: Token,
+        id: usize,
+    },
+    StringLit {
+        token: Token,
+        id: usize,
+    },
+    Identifier {
+        token: Token,
+        id: usize,
+    },
     Binary {
         op: Token,
         left: Box<Expr>,
         right: Box<Expr>,
+        id: usize,
     },
     FnCall {
         callee: Token,
         args: Vec<Expr>,
+        id: usize,
     },
     MagicFnCall {
         fncall: Box<Expr>,
+        id: usize,
     },
     Block {
         statements: Vec<Stmt>,
         block_value: Option<Box<Expr>>,
         line: usize,
         column: usize,
+        id: usize,
     },
     FieldAccess {
         left: Box<Expr>,
         member: Token,
         line: usize,
         column: usize,
+        id: usize,
     },
     StaticFieldAccess {
         left: Token,
         field: Token,
         line: usize,
         column: usize,
+        id: usize,
     },
     MethodCall {
         left: Box<Expr>,
@@ -44,6 +62,7 @@ pub enum Expr {
         args: Vec<Expr>,
         line: usize,
         column: usize,
+        id: usize,
     },
     StaticMethodCall {
         left: TolType,
@@ -51,26 +70,29 @@ pub enum Expr {
         args: Vec<Expr>,
         line: usize,
         column: usize,
+        id: usize,
     },
     Struct {
         name: TolType,
         fields: Vec<(Token, Expr)>,
         line: usize,
         column: usize,
+        id: usize,
     },
     Array {
         elements: Vec<Expr>,
         line: usize,
         column: usize,
+        id: usize,
     },
 }
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::IntLit(tok) => write!(f, "{}", tok.lexeme()),
-            Expr::FloatLit(tok) => write!(f, "{}", tok.lexeme()),
-            Expr::Identifier(tok) => write!(f, "{}", tok.lexeme()),
+            Expr::IntLit { token, .. } => write!(f, "{}", token.lexeme()),
+            Expr::FloatLit { token, .. } => write!(f, "{}", token.lexeme()),
+            Expr::Identifier { token, .. } => write!(f, "{}", token.lexeme()),
             Expr::Binary {
                 op, left, right, ..
             } => {

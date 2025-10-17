@@ -18,6 +18,7 @@ pub struct SemanticAnalyzer<'a> {
     type_table: HashMap<String, TypeInfo>,
     has_error: bool,
     current_func_return_type: TolType,
+    inferred_types: HashMap<usize, TolType>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -29,6 +30,7 @@ impl<'a> SemanticAnalyzer<'a> {
             type_table: HashMap::new(),
             has_error: false,
             current_func_return_type: TolType::Unknown,
+            inferred_types: HashMap::new(),
         };
 
         // Declare magic functions first
@@ -49,6 +51,7 @@ impl<'a> SemanticAnalyzer<'a> {
             if let Stmt::Bagay {
                 bagay_identifier,
                 fields,
+                ..
             } = stmt
             {
                 self.analyze_bagay(bagay_identifier, fields)
@@ -74,9 +77,10 @@ impl<'a> SemanticAnalyzer<'a> {
                 rhs,
                 line,
                 column,
+                id,
                 ..
             } => self
-                .analyze_ang(ang_identifier, ang_type, rhs, line, column)
+                .analyze_ang(ang_identifier, ang_type, rhs, *line, *column, *id)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
@@ -95,12 +99,12 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.has_error = true;
                     e.display(self.source_path);
                 }),
-            Stmt::Ibalik { rhs, line, column } => {
-                self.analyze_ibalik(rhs, line, column).unwrap_or_else(|e| {
-                    self.has_error = true;
-                    e.display(self.source_path);
-                })
-            }
+            Stmt::Ibalik {
+                rhs, line, column, ..
+            } => self.analyze_ibalik(rhs, line, column).unwrap_or_else(|e| {
+                self.has_error = true;
+                e.display(self.source_path);
+            }),
             Stmt::ExprS { expr, .. } => {
                 if let Err(e) = self.analyze_expression(expr) {
                     self.has_error = true;
@@ -110,6 +114,7 @@ impl<'a> SemanticAnalyzer<'a> {
             Stmt::Bagay {
                 bagay_identifier,
                 fields,
+                ..
             } => self
                 .analyze_bagay(bagay_identifier, fields)
                 .unwrap_or_else(|e| {
@@ -121,6 +126,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 itupad_block,
                 line,
                 column,
+                ..
             } => {
                 if let Err(e) = self.analyze_itupad(itupad_for, itupad_block, *line, *column) {
                     self.has_error = true;
@@ -131,6 +137,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 branches,
                 line,
                 column,
+                ..
             } => self
                 .analyze_kung(branches, *line, *column)
                 .unwrap_or_else(|e| {
@@ -149,14 +156,18 @@ impl<'a> SemanticAnalyzer<'a> {
         ang_identifier: &Token,
         ang_type: &TolType,
         rhs: &Expr,
-        line: &usize,
-        column: &usize,
+        line: usize,
+        column: usize,
+        id: usize,
     ) -> Result<(), CompilerError> {
-        let ang_type = self.resolve_type(ang_type, *line, *column)?;
+        let ang_type = match ang_type {
+            TolType::Unknown => self.infer_type(rhs, id)?,
+            _ => self.resolve_type(ang_type, line, column)?,
+        };
 
         let rhs_type = self.analyze_expression(rhs)?;
         // println!("{:?}, {:?}", rhs_type, ang_type);
-        rhs_type.is_assignment_compatible(&ang_type, *line, *column)?;
+        rhs_type.is_assignment_compatible(&ang_type, line, column)?;
 
         let var_symbol = Symbol::Var {
             name: ang_identifier.lexeme().to_string(),
@@ -168,6 +179,28 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         Ok(())
+    }
+
+    fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
+        let expr_type = self.analyze_expression(expr)?;
+
+        let inferred_type = self.infer_unsized_types(expr_type);
+
+        self.inferred_types.insert(id, inferred_type.clone());
+
+        Ok(inferred_type)
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn infer_unsized_types(&self, type_: TolType) -> TolType {
+        match type_ {
+            TolType::UnsizedInt => TolType::I32,
+            TolType::UnsizedFloat => TolType::DobleTang,
+            TolType::Array(t, len) => {
+                TolType::Array(Box::new(self.infer_unsized_types(*t).clone()), len)
+            }
+            _ => type_,
+        }
     }
 
     fn resolve_type(
@@ -497,19 +530,21 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
         match expr {
-            Expr::IntLit(_) => Ok(TolType::UnsizedInt),
-            Expr::FloatLit(_) => Ok(TolType::UnsizedFloat),
-            Expr::StringLit(_) => Ok(TolType::Sinulid),
-            Expr::Identifier(tok) => match self.lookup_symbol(tok.lexeme()) {
+            Expr::IntLit { .. } => Ok(TolType::UnsizedInt),
+            Expr::FloatLit { .. } => Ok(TolType::UnsizedFloat),
+            Expr::StringLit { .. } => Ok(TolType::Sinulid),
+            Expr::Identifier { token, .. } => match self.lookup_symbol(token.lexeme()) {
                 Some(s) => Ok(s.get_type().to_owned()),
                 None => Err(CompilerError::new(
-                    &format!("`{}` ay hindi pa na-ideklara", tok.lexeme()),
+                    &format!("`{}` ay hindi pa na-ideklara", token.lexeme()),
                     ErrorKind::Error,
-                    tok.line(),
-                    tok.column(),
+                    token.line(),
+                    token.column(),
                 )),
             },
-            Expr::Binary { op, left, right } => match op.kind() {
+            Expr::Binary {
+                op, left, right, ..
+            } => match op.kind() {
                 TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash => {
                     let left_type = self.analyze_expression(left)?;
                     let right_type = self.analyze_expression(right)?;
@@ -554,7 +589,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     .as_ref()
                     .map_or_else(|| Ok(TolType::Wala), |expr| self.analyze_expression(expr))
             }
-            Expr::FnCall { callee, args } => {
+            Expr::FnCall { callee, args, .. } => {
                 let symbol = match self.lookup_symbol(callee.lexeme()) {
                     Some(s) => s,
                     None => {
@@ -623,12 +658,13 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 panic!("The symbol is not declared as `par` symbol");
             }
-            Expr::MagicFnCall { fncall } => self.analyze_expression(fncall),
+            Expr::MagicFnCall { fncall, .. } => self.analyze_expression(fncall),
             Expr::FieldAccess {
                 left,
                 member,
                 line,
                 column,
+                ..
             } => {
                 let left_type = self.analyze_expression(left)?;
 
@@ -661,6 +697,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 args,
                 line,
                 column,
+                ..
             } => {
                 let left_type = self.analyze_expression(left)?;
                 let mut arg_types = vec![left_type.clone()];
@@ -727,6 +764,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 args,
                 line,
                 column,
+                ..
             } => {
                 let left_type = self.resolve_type(left, callee.line(), callee.column())?;
 
@@ -788,6 +826,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 fields,
                 line,
                 column,
+                ..
             } => {
                 let resolved_type = self.resolve_type(name, *line, *column)?;
 
@@ -976,6 +1015,10 @@ impl<'a> SemanticAnalyzer<'a> {
 
     pub fn has_error(&self) -> bool {
         self.has_error
+    }
+
+    pub fn inferred_types(&self) -> &HashMap<usize, TolType> {
+        &self.inferred_types
     }
 }
 

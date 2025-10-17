@@ -28,19 +28,15 @@ itupad i32 {
 }
 
 paraan una() {
-    ang tao: Tao = Tao::bago(8, 10)
-    ang edad: i32 = tao.edad
-    ang tuig: u32 = tao.get_tuig()
+    ang tao = Tao::bago(8, 10)
+    ang edad = tao.edad
+    ang tuig = tao.get_tuig()
 
-    ang dagdag: i32 = 5
-    ang resulta: i32 = dagdag.idagdag_sa(1)
-    ang res: i32 = i32::wala_lang()
+    ang dagdag = 5
+    ang resulta = dagdag.idagdag_sa(1)
+    ang res = i32::wala_lang()
 
-    kung dagdag {
-        2
-    }
-
-    ang array: []i32 = [1, 2, 3]
+    ang array = [[1, 2, 3]]
 
     @println("Kumusta mundo")
     @alis(1)

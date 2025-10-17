@@ -14,6 +14,7 @@ pub struct Parser<'a> {
     tokens: &'a Vec<Token>,
     current: usize,
     source_path: &'a str,
+    ast_id: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -22,6 +23,7 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             source_path,
+            ast_id: 0,
         }
     }
 
@@ -95,6 +97,8 @@ impl<'a> Parser<'a> {
 
         let block = self.parse_block()?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Par {
             par_identifier,
             params,
@@ -102,6 +106,7 @@ impl<'a> Parser<'a> {
             block,
             line: par_tok.line(),
             column: par_tok.column(),
+            id,
         })
     }
 
@@ -182,11 +187,14 @@ impl<'a> Parser<'a> {
 
         self.advance(); // Consumes `}`
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Expr::Block {
             statements,
             block_value,
             line: left_brace_tok.line(),
             column: left_brace_tok.column(),
+            id,
         })
     }
 
@@ -209,14 +217,11 @@ impl<'a> Parser<'a> {
             )?
             .clone();
 
-        self.consume(
-            TokenKind::Colon,
-            self.expect_err("`:`")
-                .add_help("Maglagay ng `:` dito")
-                .add_note("Ang `:` ay ginagamit sa paghiwalay ng pangalan sa tipo nito"),
-        )?;
-
-        let ang_type = self.parse_type()?;
+        let mut ang_type = TolType::Unknown;
+        if self.peek().kind() == &TokenKind::Colon {
+            self.advance();
+            ang_type = self.parse_type()?;
+        }
 
         self.consume(
             TokenKind::Equal,
@@ -229,6 +234,8 @@ impl<'a> Parser<'a> {
         )?;
         let rhs = self.parse_expression(0)?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Ang {
             mutable,
             ang_identifier,
@@ -236,6 +243,7 @@ impl<'a> Parser<'a> {
             rhs,
             line: ang_tok.line(),
             column: ang_tok.column(),
+            id,
         })
     }
 
@@ -246,10 +254,13 @@ impl<'a> Parser<'a> {
 
         let rhs = self.parse_expression(0)?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Ibalik {
             rhs,
             line: ibalik_tok.line(),
             column: ibalik_tok.column(),
+            id,
         })
     }
 
@@ -262,9 +273,12 @@ impl<'a> Parser<'a> {
 
         let fields = self.parse_bagay_fields()?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Bagay {
             bagay_identifier,
             fields,
+            id,
         })
     }
 
@@ -310,11 +324,14 @@ impl<'a> Parser<'a> {
 
         let itupad_block = self.parse_itupad_block()?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Itupad {
             itupad_for,
             itupad_block: Box::new(itupad_block),
             line: itupad_tok.line(),
             column: itupad_tok.column(),
+            id,
         })
     }
 
@@ -330,10 +347,13 @@ impl<'a> Parser<'a> {
 
         self.advance(); // Consumes `}`
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::ItupadBlock {
             methods,
             line: lb_tok.line(),
             column: lb_tok.column(),
+            id,
         })
     }
 
@@ -358,6 +378,8 @@ impl<'a> Parser<'a> {
 
         let block = self.parse_block()?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Method {
             is_static,
             met_identifier,
@@ -366,6 +388,7 @@ impl<'a> Parser<'a> {
             block,
             line: par_tok.line(),
             column: par_tok.column(),
+            id,
         })
     }
 
@@ -373,10 +396,13 @@ impl<'a> Parser<'a> {
         let start_tok = self.peek().clone();
         let expr = self.parse_expression(0)?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::ExprS {
             expr,
             line: start_tok.line(),
             column: start_tok.column(),
+            id,
         })
     }
 
@@ -500,9 +526,30 @@ impl<'a> Parser<'a> {
         let current_tok = self.advance().clone();
 
         match current_tok.kind() {
-            TokenKind::IntLit => Ok(Expr::IntLit(current_tok)),
-            TokenKind::FloatLit => Ok(Expr::FloatLit(current_tok)),
-            TokenKind::StringLit => Ok(Expr::StringLit(current_tok)),
+            TokenKind::IntLit => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::IntLit {
+                    token: current_tok,
+                    id,
+                })
+            }
+            TokenKind::FloatLit => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::FloatLit {
+                    token: current_tok,
+                    id,
+                })
+            }
+            TokenKind::StringLit => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::StringLit {
+                    token: current_tok,
+                    id,
+                })
+            }
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);
@@ -510,7 +557,12 @@ impl<'a> Parser<'a> {
                     return self.parse_struct_expr(&current_tok);
                 }
 
-                Ok(Expr::Identifier(current_tok))
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::Identifier {
+                    token: current_tok,
+                    id,
+                })
             }
             TokenKind::LeftParen => {
                 let expr = self.parse_expression(0)?;
@@ -518,14 +570,19 @@ impl<'a> Parser<'a> {
                     TokenKind::RightParen,
                     self.expect_err("`)`").add_help("Lagyan mo ng `)`"),
                 )?;
+
                 Ok(expr)
             }
             TokenKind::At => {
                 let callee = self.advance().clone();
 
                 let fncall = self.parse_fncall(&callee)?;
+
+                let id = self.ast_id;
+                self.ast_id += 1;
                 Ok(Expr::MagicFnCall {
                     fncall: Box::new(fncall),
+                    id,
                 })
             }
             TokenKind::LeftBracket => {
@@ -542,10 +599,13 @@ impl<'a> Parser<'a> {
 
                 self.consume(TokenKind::RightBracket, self.expect_err("`}`"))?;
 
+                let id = self.ast_id;
+                self.ast_id += 1;
                 Ok(Expr::Array {
                     elements,
                     line: current_tok.line(),
                     column: current_tok.column(),
+                    id,
                 })
             }
             _ => Err(self.expect_err("expresyon")),
@@ -563,20 +623,30 @@ impl<'a> Parser<'a> {
 
         match op.kind() {
             TokenKind::Dot => match right {
-                Expr::Identifier(tok) => Ok(Expr::FieldAccess {
-                    left: Box::new(left),
-                    member: tok,
-                    line: op.line(),
-                    column: op.column(),
-                }),
+                Expr::Identifier { token, .. } => {
+                    let id = self.ast_id;
+                    self.ast_id += 1;
+                    Ok(Expr::FieldAccess {
+                        left: Box::new(left),
+                        member: token,
+                        line: op.line(),
+                        column: op.column(),
+                        id,
+                    })
+                }
                 // TODO: MethodCall
-                Expr::FnCall { callee, args } => Ok(Expr::MethodCall {
-                    left: Box::new(left),
-                    callee,
-                    args,
-                    line: op.line(),
-                    column: op.column(),
-                }),
+                Expr::FnCall { callee, args, .. } => {
+                    let id = self.ast_id;
+                    self.ast_id += 1;
+                    Ok(Expr::MethodCall {
+                        left: Box::new(left),
+                        callee,
+                        args,
+                        line: op.line(),
+                        column: op.column(),
+                        id,
+                    })
+                }
                 _ => Err(CompilerError::new(
                     "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
                     ErrorKind::Error,
@@ -586,20 +656,30 @@ impl<'a> Parser<'a> {
             },
             TokenKind::ColonColon => {
                 match right {
-                    Expr::Identifier(tok) => Ok(Expr::StaticFieldAccess {
-                        left: tok_before_op.clone(),
-                        field: tok,
-                        line: op.line(),
-                        column: op.column(),
-                    }),
+                    Expr::Identifier { token, .. } => {
+                        let id = self.ast_id;
+                        self.ast_id += 1;
+                        Ok(Expr::StaticFieldAccess {
+                            left: tok_before_op.clone(),
+                            field: token,
+                            line: op.line(),
+                            column: op.column(),
+                            id,
+                        })
+                    }
                     // TODO: StaticMethodCall
-                    Expr::FnCall { callee, args } => Ok(Expr::StaticMethodCall {
-                        left: TolType::UnknownIdentifier(tok_before_op.lexeme().to_string()),
-                        callee,
-                        args,
-                        line: op.line(),
-                        column: op.column(),
-                    }),
+                    Expr::FnCall { callee, args, .. } => {
+                        let id = self.ast_id;
+                        self.ast_id += 1;
+                        Ok(Expr::StaticMethodCall {
+                            left: TolType::UnknownIdentifier(tok_before_op.lexeme().to_string()),
+                            callee,
+                            args,
+                            line: op.line(),
+                            column: op.column(),
+                            id,
+                        })
+                    }
                     _ => Err(CompilerError::new(
                         "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
                         ErrorKind::Error,
@@ -608,11 +688,16 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
-            _ => Ok(Expr::Binary {
-                op: op.clone(),
-                left: Box::new(left),
-                right: Box::new(right),
-            }),
+            _ => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::Binary {
+                    op: op.clone(),
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    id,
+                })
+            }
         }
     }
 
@@ -644,10 +729,13 @@ impl<'a> Parser<'a> {
             })
         }
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Stmt::Kung {
             branches,
             line: kung_tok.line(),
             column: kung_tok.column(),
+            id,
         })
     }
 
@@ -676,11 +764,14 @@ impl<'a> Parser<'a> {
 
         self.advance();
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Expr::Struct {
             name: TolType::UnknownIdentifier(struct_name.lexeme().to_string()),
             fields,
             line: struct_name.line(),
             column: struct_name.column(),
+            id,
         })
     }
 
@@ -700,9 +791,12 @@ impl<'a> Parser<'a> {
 
         self.advance(); // Consumes the `)`
 
+        let id = self.ast_id;
+        self.ast_id += 1;
         Ok(Expr::FnCall {
             callee: callee.to_owned(),
             args,
+            id,
         })
     }
 

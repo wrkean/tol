@@ -73,7 +73,7 @@ pub fn compile(source: &str, path_to_source: &str) {
     analyzer.analyze();
 
     if !analyzer.has_error() {
-        let mut codegen = CodeGenerator::new(&ast);
+        let mut codegen = CodeGenerator::new(&ast, analyzer.inferred_types());
         let c_code = codegen.generate();
         compile_c(c_code);
     }

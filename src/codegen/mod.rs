@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     codegen::block_context::BlockContext,
     lexer::token::Token,
@@ -10,10 +12,11 @@ pub mod block_context;
 pub struct CodeGenerator<'a> {
     ast: &'a Stmt,
     output: String,
+    inferred_types: &'a HashMap<usize, TolType>,
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(ast: &'a Stmt) -> Self {
+    pub fn new(ast: &'a Stmt, inferred_types: &'a HashMap<usize, TolType>) -> Self {
         // Parents must exist first
         Self {
             ast,
@@ -21,6 +24,7 @@ impl<'a> CodeGenerator<'a> {
                 "#include<stdio.h>\n\
 #include<stdlib.h>\n",
             ),
+            inferred_types,
         }
     }
 
@@ -53,9 +57,14 @@ impl<'a> CodeGenerator<'a> {
                 ang_identifier,
                 ang_type,
                 rhs,
+                id,
                 ..
             } => {
                 let modifier_c = if !mutable { "const " } else { "" };
+                let ang_type = match ang_type {
+                    TolType::Unknown => self.get_inferred_type(*id),
+                    _ => ang_type,
+                };
                 let type_c = ang_type.as_c();
                 let id_c = format!("{}{}", ang_identifier.lexeme(), ang_type.array_suffix());
                 let rhs_c = self.gen_expression(rhs);
@@ -89,6 +98,7 @@ impl<'a> CodeGenerator<'a> {
             Stmt::Bagay {
                 bagay_identifier,
                 fields,
+                ..
             } => {
                 let bagay_id_c = bagay_identifier.lexeme();
                 let mut fields_c = String::new();
@@ -185,13 +195,15 @@ impl<'a> CodeGenerator<'a> {
 
     fn gen_expression(&self, expr: &Expr) -> String {
         match expr {
-            Expr::IntLit(tok) | Expr::FloatLit(tok) | Expr::Identifier(tok) => {
-                tok.lexeme().to_string()
+            Expr::IntLit { token, .. }
+            | Expr::FloatLit { token, .. }
+            | Expr::Identifier { token, .. } => token.lexeme().to_string(),
+            Expr::StringLit { token, .. } => {
+                format!("\"{}\"", token.lexeme())
             }
-            Expr::StringLit(tok) => {
-                format!("\"{}\"", tok.lexeme())
-            }
-            Expr::Binary { op, left, right } => {
+            Expr::Binary {
+                op, left, right, ..
+            } => {
                 format!(
                     "({} {} {})",
                     self.gen_expression(left),
@@ -200,7 +212,7 @@ impl<'a> CodeGenerator<'a> {
                 )
             }
             Expr::Block { .. } => self.gen_block(expr, BlockContext::StandAlone),
-            Expr::FnCall { callee, args } => {
+            Expr::FnCall { callee, args, .. } => {
                 let mut args_str_c = String::from("(");
                 for arg in args {
                     args_str_c.push_str(&self.gen_expression(arg));
@@ -212,8 +224,8 @@ impl<'a> CodeGenerator<'a> {
 
                 format!("{}{}", callee.lexeme(), args_str_c)
             }
-            Expr::MagicFnCall { fncall } => {
-                if let Expr::FnCall { callee, args } = fncall.as_ref() {
+            Expr::MagicFnCall { fncall, .. } => {
+                if let Expr::FnCall { callee, args, .. } = fncall.as_ref() {
                     match callee.lexeme() {
                         "print" => {
                             let str_arg = self.gen_expression(&args[0]);
@@ -326,5 +338,10 @@ impl<'a> CodeGenerator<'a> {
         } else {
             unreachable!("block is not Expr::Block")
         }
+    }
+
+    fn get_inferred_type(&self, id: usize) -> &TolType {
+        println!("{}", self.inferred_types.get(&id).unwrap());
+        self.inferred_types.get(&id).unwrap()
     }
 }
