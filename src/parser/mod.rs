@@ -380,7 +380,7 @@ impl<'a> Parser<'a> {
 
     fn parse_type(&mut self) -> Result<TolType, CompilerError> {
         // NOTE: Only works for primitives for now
-        let initial_type = match self.peek().lexeme() {
+        match self.peek().lexeme() {
             "i8" => {
                 self.advance();
                 Ok(TolType::I8)
@@ -441,13 +441,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(TolType::Wala)
             }
-            _ => Ok(TolType::UnknownIdentifier(
-                self.advance().lexeme().to_string(),
-            )),
-        }?;
-
-        match self.peek().kind() {
-            TokenKind::LeftBracket => {
+            "[" => {
                 self.advance();
 
                 let mut len = None;
@@ -455,8 +449,9 @@ impl<'a> Parser<'a> {
                     let int_lit = self.consume(
                         TokenKind::IntLit,
                         self.expect_err("literal na integer")
-                            .add_note("Literal na integer muna aangnpwede sa loob ng [] :("),
+                            .add_note("Literal na integer lang ang pwede sa loob ng []"),
                     )?;
+
                     len = match int_lit.lexeme().parse::<usize>() {
                         Ok(val) => Some(val),
                         Err(_) => {
@@ -472,10 +467,13 @@ impl<'a> Parser<'a> {
                 }
 
                 self.consume(TokenKind::RightBracket, self.expect_err("`]`"))?;
+                let elem_type = self.parse_type()?;
 
-                Ok(TolType::Array(Box::new(initial_type), len))
+                Ok(TolType::Array(Box::new(elem_type), len))
             }
-            _ => Ok(initial_type),
+            _ => Ok(TolType::UnknownIdentifier(
+                self.advance().lexeme().to_string(),
+            )),
         }
     }
 

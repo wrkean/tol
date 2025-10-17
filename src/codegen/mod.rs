@@ -57,13 +57,7 @@ impl<'a> CodeGenerator<'a> {
             } => {
                 let modifier_c = if !mutable { "const " } else { "" };
                 let type_c = ang_type.as_c();
-                let id_c = match ang_type {
-                    TolType::Array(_, len) => match len {
-                        Some(l) => format!("{}[{}]", ang_identifier.lexeme(), l),
-                        None => format!("{}[]", ang_identifier.lexeme()),
-                    },
-                    _ => ang_identifier.lexeme().to_string(),
-                };
+                let id_c = format!("{}{}", ang_identifier.lexeme(), ang_type.array_suffix());
                 let rhs_c = self.gen_expression(rhs);
 
                 format!("{modifier_c}{type_c} {id_c} = {rhs_c};")

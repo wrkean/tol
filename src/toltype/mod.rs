@@ -140,7 +140,13 @@ impl TolType {
             TolType::Sinulid => "char*".to_string(),
             TolType::Bagay(s) => s.to_string(),
             TolType::UnknownIdentifier(s) => s.to_string(),
-            TolType::Array(t, _) => t.as_c(),
+            TolType::Array(inner, _) => {
+                let mut t = inner.as_ref();
+                while let TolType::Array(next, _) = t {
+                    t = next.as_ref();
+                }
+                t.as_c()
+            }
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
@@ -148,6 +154,21 @@ impl TolType {
                     "If this panic! gets triggered, something is VERY wrong with the semantic analyzer"
                 )
             }
+        }
+    }
+
+    // Special case for arrays because C array syntax
+    // is weird
+    pub fn array_suffix(&self) -> String {
+        match self {
+            TolType::Array(inner, len_opt) => {
+                let inner_suffix = inner.array_suffix();
+                match len_opt {
+                    Some(len) => format!("[{}]{}", len, inner_suffix),
+                    None => format!("[]{}", inner_suffix),
+                }
+            }
+            _ => String::new(),
         }
     }
 }

@@ -4,11 +4,11 @@ bagay Tao {
 }
 
 itupad Tao {
-    paraan get_tuig(ako) -> u32 {
+    paraan get_tuig(ako) u32 {
         ako.tuig
     }
 
-    paraan bago(edad: i32, tuig: u32) -> Tao {
+    paraan bago(edad: i32, tuig: u32) Tao {
         ibalik Tao: {
             edad: edad, tuig: tuig,
         };
@@ -20,25 +20,30 @@ bagay Hayop {
 }
 
 itupad i32 {
-    paraan idagdag_sa(ako, iba: i32) -> i32 {
-        ibalik ako + iba;
+    paraan idagdag_sa(ako, iba: i32) i32 {
+        ibalik ako + iba
+    }
+
+    paraan wala_lang() i32 {
+        ibalik 42
     }
 }
 
 paraan una() {
-    ang tao: Tao = Tao::bago(8, 10);
-    ang edad: i32 = tao.edad;
-    ang tuig: u32 = tao.get_tuig();
+    ang tao: Tao = Tao::bago(8, 10)
+    ang edad: i32 = tao.edad
+    ang tuig: u32 = tao.get_tuig()
 
-    ang dagdag: i32 = 5;
-    ang resulta: i32 = dagdag.idagdag_sa(1);
+    ang dagdag: i32 = 5
+    ang resulta: i32 = dagdag.idagdag_sa(1)
+    ang res: i32 = i32::wala_lang()
 
     kung dagdag {
-        2;
+        2
     }
 
-    ang array: i32[5] = [1];
+    ang array: []i32 = [1, 2, 3]
 
-    @println("Kumusta mundo");
-    @alis(1);
+    @println("Kumusta mundo")
+    @alis(1)
 }
