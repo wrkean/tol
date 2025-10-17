@@ -82,11 +82,14 @@ impl<'a> Parser<'a> {
                 .add_help("Lagyan mo ng `(` dito para simulan ang pag deklara ng mga parameter"),
         )?;
         let params = self.parse_params()?;
-        self.advance(); // Consumes `}`
+        self.consume(
+            TokenKind::RightParen,
+            self.expect_err("`)`")
+                .add_help("Lagyan mo ng `)` para tapusin ang listahan ng parameter"),
+        )?;
 
         let mut return_type = TolType::Wala;
-        if self.peek().kind() == &TokenKind::ThinArrow {
-            self.advance(); // Consumes `->`
+        if self.peek().kind() != &TokenKind::LeftBrace {
             return_type = self.parse_type()?;
         }
 
@@ -349,8 +352,7 @@ impl<'a> Parser<'a> {
         self.advance(); // Consumes `)`
 
         let mut return_type = TolType::Wala;
-        if self.peek().kind() == &TokenKind::ThinArrow {
-            self.advance();
+        if self.peek().kind() != &TokenKind::LeftBrace {
             return_type = self.parse_type()?;
         }
 
@@ -504,7 +506,7 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);
-                } else if self.peek().kind() == &TokenKind::Colon {
+                } else if self.peek().kind() == &TokenKind::Bang {
                     return self.parse_struct_expr(&current_tok);
                 }
 

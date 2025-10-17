@@ -196,13 +196,14 @@ impl<'a> Lexer<'a> {
                 tok.kind(),
                 TokenKind::Identifier
                     | TokenKind::RightParen
+                    | TokenKind::RightBracket
                     | TokenKind::IntLit
                     | TokenKind::FloatLit
                     | TokenKind::StringLit
             )
         {
             self.start_column += 1;
-            self.add_token(TokenKind::SemiColon, None);
+            self.add_token(TokenKind::SemiColon, Some(";"));
         }
     }
 
