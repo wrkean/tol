@@ -650,11 +650,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
-        self.consume(TokenKind::Colon, self.expect_err("`:`"))?;
-        self.consume(TokenKind::LeftBrace, self.expect_err("`{`"))?;
+        self.consume(TokenKind::Bang, self.expect_err("`!`"))?;
+        self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
 
         let mut fields = Vec::new();
-        while self.peek().kind() != &TokenKind::RightBrace {
+        while self.peek().kind() != &TokenKind::RightParen {
             let field_name = self
                 .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
                 .clone();
@@ -665,7 +665,7 @@ impl<'a> Parser<'a> {
 
             if self.peek().kind() == &TokenKind::Comma {
                 self.advance();
-            } else if self.peek().kind() != &TokenKind::RightBrace {
+            } else if self.peek().kind() != &TokenKind::RightParen {
                 return Err(self.expect_err("`}` o `,`"));
             }
 

@@ -141,13 +141,7 @@ impl<'a> Lexer<'a> {
                 if self.match_char('=') {
                     self.add_token(TokenKind::BangEqual, None);
                 } else {
-                    return Err(CompilerError::new(
-                        "Hindi suportadong token '!'",
-                        ErrorKind::Error,
-                        self.line,
-                        self.start_column,
-                    )
-                    .add_help("Palitan mo ito ng `di`"));
+                    self.add_token(TokenKind::Bang, None);
                 }
             }
             '>' => {
@@ -168,6 +162,7 @@ impl<'a> Lexer<'a> {
                 self.skip_whitespace();
             }
             '\n' => {
+                self.infer_semicolon();
                 self.line += 1;
                 self.column = 1;
             }
@@ -193,6 +188,22 @@ impl<'a> Lexer<'a> {
         }
 
         Ok(())
+    }
+
+    fn infer_semicolon(&mut self) {
+        if let Some(tok) = self.tokens.last()
+            && matches!(
+                tok.kind(),
+                TokenKind::Identifier
+                    | TokenKind::RightParen
+                    | TokenKind::IntLit
+                    | TokenKind::FloatLit
+                    | TokenKind::StringLit
+            )
+        {
+            self.start_column += 1;
+            self.add_token(TokenKind::SemiColon, None);
+        }
     }
 
     fn lex_identifier(&mut self) {

@@ -38,6 +38,7 @@ pub enum TokenKind {
     Percent,
     At,
     Question,
+    Bang,
 
     // Assignment operators
     Equal,

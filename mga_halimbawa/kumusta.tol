@@ -9,9 +9,7 @@ itupad Tao {
     }
 
     paraan bago(edad: i32, tuig: u32) Tao {
-        ibalik Tao: {
-            edad: edad, tuig: tuig,
-        };
+        ibalik Tao:(edad: edad, tuig: tuig)
     }
 }
 
