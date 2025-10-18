@@ -38,6 +38,10 @@ paraan una() {
 
     ang array = [[1, 2, 3]]
 
+    sa 0..=12 => i {
+        i;
+    }
+
     @println("Kumusta mundo")
     @alis(1)
 }

@@ -65,6 +65,7 @@ impl<'a> Parser<'a> {
             TokenKind::Bagay => self.parse_bagay(),
             TokenKind::Itupad => self.parse_itupad(),
             TokenKind::Kung => self.parse_kung(),
+            TokenKind::Sa => self.parse_sa(), // Pharsa?
             _ => self.parse_expr_stmt(),
         }
     }
@@ -406,6 +407,32 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_sa(&mut self) -> Result<Stmt, CompilerError> {
+        let sa_tok = self
+            .consume(TokenKind::Sa, self.expect_err("`sa`"))?
+            .clone();
+
+        let iterator = self.parse_expression(0)?;
+
+        self.consume(TokenKind::ThickArrow, self.expect_err("`=>`"))?;
+        let bind = self
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+            .clone();
+
+        let block = self.parse_block()?;
+
+        let id = self.ast_id;
+        self.ast_id += 1;
+        Ok(Stmt::Sa {
+            iterator,
+            bind,
+            block,
+            line: sa_tok.line(),
+            column: sa_tok.column(),
+            id,
+        })
+    }
+
     fn parse_type(&mut self) -> Result<TolType, CompilerError> {
         // NOTE: Only works for primitives for now
         match self.peek().lexeme() {
@@ -688,6 +715,32 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            TokenKind::DotDot => {
+                let start = Box::new(left);
+                let end = Box::new(right);
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::RangeExclusive {
+                    start,
+                    end,
+                    line: op.line(),
+                    column: op.column(),
+                    id,
+                })
+            }
+            TokenKind::DotDotEqual => {
+                let start = Box::new(left);
+                let end = Box::new(right);
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::RangeInclusive {
+                    start,
+                    end,
+                    line: op.line(),
+                    column: op.column(),
+                    id,
+                })
+            }
             _ => {
                 let id = self.ast_id;
                 self.ast_id += 1;
@@ -821,9 +874,10 @@ impl<'a> Parser<'a> {
 
     fn get_precedence(&self, op: &Token) -> i32 {
         match op.kind() {
-            TokenKind::Plus | TokenKind::Minus => 1,
-            TokenKind::Star | TokenKind::Slash => 2,
-            TokenKind::Dot | TokenKind::ColonColon => 3,
+            TokenKind::DotDot | TokenKind::DotDotEqual => 1,
+            TokenKind::Plus | TokenKind::Minus => 2,
+            TokenKind::Star | TokenKind::Slash => 3,
+            TokenKind::Dot | TokenKind::ColonColon => 4,
             _ => 0,
         }
     }

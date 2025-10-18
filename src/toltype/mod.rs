@@ -49,7 +49,7 @@ pub enum TolType {
 }
 
 impl TolType {
-    fn is_integer(&self) -> bool {
+    pub fn is_integer(&self) -> bool {
         matches!(
             self,
             TolType::I8

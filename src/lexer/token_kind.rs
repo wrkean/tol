@@ -10,6 +10,7 @@ pub enum TokenKind {
     Kung,
     KungDi,
     KungWala,
+    Sa,
 
     Identifier,
 
@@ -29,8 +30,11 @@ pub enum TokenKind {
     ColonColon,
     Comma,
     Dot,
+    DotDot,
+    DotDotEqual,
     SemiColon,
     ThinArrow,
+    ThickArrow,
     Plus,
     Minus,
     Star,

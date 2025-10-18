@@ -148,6 +148,41 @@ impl<'a> CodeGenerator<'a> {
 
                 if_c
             }
+            Stmt::Sa {
+                iterator,
+                bind,
+                block,
+                id,
+                ..
+            } => match iterator {
+                Expr::RangeExclusive { start, end, .. } => {
+                    let bind_type = self.get_inferred_type(*id).as_c();
+                    let bind_id_c = bind.lexeme();
+                    let start_c = self.gen_expression(start);
+                    let end_c = self.gen_expression(end);
+                    let block_c = self.gen_expression(block);
+
+                    format!(
+                        "for ({bind_type} {bind_id_c} = {start_c}; {bind_id_c} < {end_c}; {bind_id_c}++) {block_c}"
+                    )
+                }
+                Expr::RangeInclusive { start, end, .. } => {
+                    let bind_type = self.get_inferred_type(*id).as_c();
+                    let bind_id_c = bind.lexeme();
+                    let start_c = self.gen_expression(start);
+                    let end_c = self.gen_expression(end);
+                    let block_c = self.gen_expression(block);
+
+                    format!(
+                        "for ({bind_type} {bind_id_c} = {start_c}; {bind_id_c} <= {end_c}; {bind_id_c}++) {block_c}"
+                    )
+                }
+                _ => {
+                    panic!(
+                        "Hindi muna pwede ang ibang expresyon bukod sa `..` sa `sa`, ito ay gagawin pa. :)"
+                    );
+                }
+            },
             Stmt::Program(statements) => self.gen_statements(statements),
             _ => "".to_string(),
         }
@@ -341,7 +376,7 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn get_inferred_type(&self, id: usize) -> &TolType {
-        println!("{}", self.inferred_types.get(&id).unwrap());
+        // println!("Getting id: {}", id);
         self.inferred_types.get(&id).unwrap()
     }
 }

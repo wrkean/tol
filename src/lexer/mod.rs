@@ -33,6 +33,7 @@ impl<'a> Lexer<'a> {
             ("kung", TokenKind::Kung),
             ("kungdi", TokenKind::KungDi),
             ("kungwala", TokenKind::KungWala),
+            ("sa", TokenKind::Sa),
         ]);
         Self {
             source,
@@ -83,9 +84,19 @@ impl<'a> Lexer<'a> {
             ']' => self.add_token(TokenKind::RightBracket, None),
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
-            '.' => self.add_token(TokenKind::Dot, None),
             '@' => self.add_token(TokenKind::At, None),
             '?' => self.add_token(TokenKind::Question, None),
+            '.' => {
+                if self.match_char('.') {
+                    if self.match_char('=') {
+                        self.add_token(TokenKind::DotDotEqual, None);
+                    } else {
+                        self.add_token(TokenKind::DotDot, None);
+                    }
+                } else {
+                    self.add_token(TokenKind::Dot, None);
+                }
+            }
             ':' => {
                 if self.match_char(':') {
                     self.add_token(TokenKind::ColonColon, None);
@@ -133,6 +144,8 @@ impl<'a> Lexer<'a> {
             '=' => {
                 if self.match_char('=') {
                     self.add_token(TokenKind::EqualEqual, None);
+                } else if self.match_char('>') {
+                    self.add_token(TokenKind::ThickArrow, None);
                 } else {
                     self.add_token(TokenKind::Equal, None);
                 }
@@ -226,6 +239,8 @@ impl<'a> Lexer<'a> {
 
     fn lex_number(&mut self) {
         let mut is_float = false;
+
+        // Lex integer part
         while let Some(&ch) = self.peek() {
             if ch.is_ascii_digit() || ch == '_' {
                 self.advance();
@@ -234,21 +249,28 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        #[allow(clippy::collapsible_if)]
+        // Check for fractional part
         if let Some(&'.') = self.peek() {
-            is_float = true;
-            self.advance();
+            if let Some(next_ch) = self.peek_next() {
+                if next_ch.is_ascii_digit() {
+                    // Only treat as float if a digit follows the '.'
+                    is_float = true;
+                    self.advance(); // consume '.'
 
-            while let Some(&ch) = self.peek() {
-                if ch.is_ascii_digit() || ch == '_' {
-                    self.advance();
-                } else {
-                    break;
+                    while let Some(&ch) = self.peek() {
+                        if ch.is_ascii_digit() || ch == '_' {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
                 }
+                // else: '.' is not part of the number, leave it for another token
             }
         }
 
         let with_underscores = &self.source[self.start..self.current];
-
         let without_underscores: String = with_underscores.chars().filter(|&c| c != '_').collect();
 
         let kind = if is_float {
@@ -358,6 +380,10 @@ impl<'a> Lexer<'a> {
 
     fn peek(&mut self) -> Option<&char> {
         self.chars.peek()
+    }
+
+    fn peek_next(&mut self) -> Option<char> {
+        self.source[self.current..].chars().nth(1)
     }
 
     fn advance(&mut self) -> Option<char> {

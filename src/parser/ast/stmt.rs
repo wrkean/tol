@@ -67,6 +67,14 @@ pub enum Stmt {
         column: usize,
         id: usize,
     },
+    Sa {
+        iterator: Expr,
+        bind: Token,
+        block: Expr,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -85,6 +85,20 @@ pub enum Expr {
         column: usize,
         id: usize,
     },
+    RangeExclusive {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
+    RangeInclusive {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
 }
 
 impl fmt::Display for Expr {

@@ -66,6 +66,10 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
+        // for (id, ty) in &self.inferred_types {
+        //     println!("{} => {}", id, ty);
+        // }
+
         // println!("{:?}", self.type_table.keys());
     }
 
@@ -133,13 +137,18 @@ impl<'a> SemanticAnalyzer<'a> {
                     e.display(self.source_path);
                 }
             }
-            Stmt::Kung {
-                branches,
-                line,
-                column,
+            Stmt::Kung { branches, .. } => self.analyze_kung(branches).unwrap_or_else(|e| {
+                self.has_error = true;
+                e.display(self.source_path);
+            }),
+            Stmt::Sa {
+                iterator,
+                bind,
+                block,
+                id,
                 ..
             } => self
-                .analyze_kung(branches, *line, *column)
+                .analyze_sa(iterator, bind, block, *id)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
@@ -184,7 +193,7 @@ impl<'a> SemanticAnalyzer<'a> {
     fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
         let expr_type = self.analyze_expression(expr)?;
 
-        let inferred_type = self.infer_unsized_types(expr_type);
+        let inferred_type = self.resolve_expr_type(expr_type);
 
         self.inferred_types.insert(id, inferred_type.clone());
 
@@ -192,12 +201,12 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     #[allow(clippy::only_used_in_recursion)]
-    fn infer_unsized_types(&self, type_: TolType) -> TolType {
+    fn resolve_expr_type(&self, type_: TolType) -> TolType {
         match type_ {
             TolType::UnsizedInt => TolType::I32,
             TolType::UnsizedFloat => TolType::DobleTang,
             TolType::Array(t, len) => {
-                TolType::Array(Box::new(self.infer_unsized_types(*t).clone()), len)
+                TolType::Array(Box::new(self.resolve_expr_type(*t).clone()), len)
             }
             _ => type_,
         }
@@ -511,12 +520,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(symbol)
     }
 
-    fn analyze_kung(
-        &mut self,
-        branches: &[KungBranch],
-        line: usize,
-        column: usize,
-    ) -> Result<(), CompilerError> {
+    fn analyze_kung(&mut self, branches: &[KungBranch]) -> Result<(), CompilerError> {
         for branch in branches {
             if let Some(s) = &branch.condition {
                 self.analyze_expression(s)?;
@@ -524,6 +528,30 @@ impl<'a> SemanticAnalyzer<'a> {
 
             self.analyze_expression(&branch.block)?;
         }
+
+        Ok(())
+    }
+
+    fn analyze_sa(
+        &mut self,
+        iterator: &Expr,
+        bind: &Token,
+        block: &Expr,
+        id: usize,
+    ) -> Result<(), CompilerError> {
+        self.enter_scope();
+        // println!("{}", id);
+        let bind_type = self.infer_type(iterator, id)?;
+        let bind_symbol = Symbol::Var {
+            name: bind.lexeme().to_string(),
+            tol_type: bind_type,
+        };
+
+        if !self.declare_symbol(bind.lexeme(), bind_symbol) {
+            return Err(self.declared_in_scope_err(bind));
+        }
+        self.analyze_expression(block)?;
+        self.exit_scope();
 
         Ok(())
     }
@@ -906,6 +934,39 @@ impl<'a> SemanticAnalyzer<'a> {
                     Box::new(assumed_element_type),
                     Some(elements.len()),
                 ))
+            }
+            Expr::RangeExclusive {
+                start,
+                end,
+                line,
+                column,
+                ..
+            }
+            | Expr::RangeInclusive {
+                start,
+                end,
+                line,
+                column,
+                ..
+            } => {
+                let left_type = self.analyze_expression(start)?;
+                let right_type = self.analyze_expression(end)?;
+
+                if let Err(e) = left_type.is_assignment_compatible(&TolType::USukat, *line, *column)
+                {
+                    return Err(e.add_note(
+                        "Dapat ang simula at wakas ng `..` na operasyon ay may usukat na tipo",
+                    ));
+                };
+                if let Err(e) =
+                    right_type.is_assignment_compatible(&TolType::USukat, *line, *column)
+                {
+                    return Err(e.add_note(
+                        "Dapat ang simula at wakas ng `..` na operasyon ay may usukat na tipo",
+                    ));
+                };
+
+                Ok(TolType::USukat)
             }
             _ => Ok(TolType::Wala),
         }
