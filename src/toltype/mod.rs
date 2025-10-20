@@ -36,7 +36,7 @@ pub enum TolType {
     Bool,
     Kar,
     Wala,
-    Sinulid,
+    // Str,
 
     // Composite
     Bagay(String),
@@ -137,7 +137,7 @@ impl TolType {
             TolType::Bool => "bool".to_string(),
             TolType::Kar => "char".to_string(),
             TolType::Wala => "void".to_string(),
-            TolType::Sinulid => "char*".to_string(),
+            // TolType::Sinulid => "char*".to_string(),
             TolType::Bagay(s) => s.to_string(),
             TolType::UnknownIdentifier(s) => s.to_string(),
             TolType::Array(inner, _) => {
@@ -191,7 +191,7 @@ impl fmt::Display for TolType {
             TolType::Bool => write!(f, "bool"),
             TolType::Kar => write!(f, "kar"),
             TolType::Wala => write!(f, "wala"),
-            TolType::Sinulid => write!(f, "sinulid"),
+            // TolType::Sinulid => write!(f, "sinulid"),
             TolType::UnsizedInt => write!(f, "literal na integer"),
             TolType::UnsizedFloat => write!(f, "literal na lutang"),
             TolType::Bagay(s) => write!(f, "{}", s),

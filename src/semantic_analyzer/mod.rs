@@ -560,7 +560,11 @@ impl<'a> SemanticAnalyzer<'a> {
         match expr {
             Expr::IntLit { .. } => Ok(TolType::UnsizedInt),
             Expr::FloatLit { .. } => Ok(TolType::UnsizedFloat),
-            Expr::StringLit { .. } => Ok(TolType::Sinulid),
+            // Expr::StringLit { .. } => Ok(TolType::Sinulid),
+            Expr::ByteStringLit { token, .. } => Ok(TolType::Array(
+                Box::new(TolType::U8),
+                Some(token.lexeme().len() + 1),
+            )),
             Expr::Identifier { token, .. } => match self.lookup_symbol(token.lexeme()) {
                 Some(s) => Ok(s.get_type().to_owned()),
                 None => Err(CompilerError::new(
@@ -1000,7 +1004,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 "print",
                 Symbol::Paraan {
                     name: "print".to_string(),
-                    param_types: vec![TolType::Sinulid],
+                    param_types: vec![TolType::Array(Box::new(TolType::U8), None)],
                     return_type: TolType::Wala,
                 },
             ),
@@ -1008,7 +1012,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 "println",
                 Symbol::Paraan {
                     name: "println".to_string(),
-                    param_types: vec![TolType::Sinulid],
+                    param_types: vec![TolType::Array(Box::new(TolType::U8), None)],
                     return_type: TolType::Wala,
                 },
             ),

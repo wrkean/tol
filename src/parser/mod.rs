@@ -577,6 +577,14 @@ impl<'a> Parser<'a> {
                     id,
                 })
             }
+            TokenKind::ByteStringLit => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::ByteStringLit {
+                    token: current_tok,
+                    id,
+                })
+            }
             TokenKind::Identifier => {
                 if self.peek().kind() == &TokenKind::LeftParen {
                     return self.parse_fncall(&current_tok);

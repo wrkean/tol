@@ -16,6 +16,10 @@ pub enum Expr {
         token: Token,
         id: usize,
     },
+    ByteStringLit {
+        token: Token,
+        id: usize,
+    },
     Identifier {
         token: Token,
         id: usize,

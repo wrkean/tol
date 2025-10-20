@@ -4,12 +4,12 @@ bagay Tao {
 }
 
 itupad Tao {
-    paraan get_tuig(ako) u32 {
-        ako.tuig
-    }
-
     paraan bago(edad: i32, tuig: u32) Tao {
         ibalik Tao!(edad: edad, tuig: tuig)
+    }
+
+    paraan get_tuig(ako) u32 {
+        ako.tuig
     }
 }
 
@@ -34,7 +34,7 @@ paraan una() {
 
     ang dagdag = 5
     ang resulta = dagdag.idagdag_sa(1)
-    ang res = i32::wala_lang()
+    ang res = i32::wala_lang() - 42
 
     ang array = [[1, 2, 3]]
 
@@ -42,6 +42,9 @@ paraan una() {
         i;
     }
 
-    @println("Kumusta mundo")
-    @alis(1)
+    ang hello = b"Hello world"
+
+    @print(hello)
+    @println(b"Kumusta mundo")
+    @alis(0)
 }

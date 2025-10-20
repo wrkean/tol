@@ -8,6 +8,11 @@ use crate::{
 pub mod token;
 pub mod token_kind;
 
+enum StringType {
+    Byte,
+    Normal,
+}
+
 pub struct Lexer<'a> {
     source: &'a str,
     source_path: &'a str,
@@ -180,7 +185,14 @@ impl<'a> Lexer<'a> {
                 self.column = 1;
             }
             '"' => {
-                self.lex_string()?;
+                self.lex_string(StringType::Normal)?;
+            }
+            'b' => {
+                if self.match_char('"') {
+                    self.lex_string(StringType::Byte)?;
+                } else {
+                    self.lex_identifier();
+                }
             }
             _ => {
                 if self.is_identifier_start(ch) {
@@ -213,6 +225,7 @@ impl<'a> Lexer<'a> {
                     | TokenKind::IntLit
                     | TokenKind::FloatLit
                     | TokenKind::StringLit
+                    | TokenKind::ByteStringLit
             )
         {
             self.start_column += 1;
@@ -282,14 +295,18 @@ impl<'a> Lexer<'a> {
         self.add_token(kind, Some(&without_underscores));
     }
 
-    fn lex_string(&mut self) -> Result<(), CompilerError> {
+    fn lex_string(&mut self, string_type: StringType) -> Result<(), CompilerError> {
         let mut value = String::new();
 
         while let Some(&ch) = self.peek() {
             match ch {
                 '"' => {
                     self.advance(); // Consumes closing `"`
-                    self.add_token(TokenKind::StringLit, Some(&value));
+                    match string_type {
+                        StringType::Byte => self.add_token(TokenKind::ByteStringLit, Some(&value)),
+                        StringType::Normal => self.add_token(TokenKind::StringLit, Some(&value)),
+                    };
+
                     return Ok(());
                 }
                 '\n' => {

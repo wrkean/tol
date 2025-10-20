@@ -18,6 +18,7 @@ pub enum TokenKind {
     IntLit,
     FloatLit,
     StringLit,
+    ByteStringLit,
 
     // Single-character literals
     LeftBrace,

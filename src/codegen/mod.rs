@@ -233,7 +233,7 @@ impl<'a> CodeGenerator<'a> {
             Expr::IntLit { token, .. }
             | Expr::FloatLit { token, .. }
             | Expr::Identifier { token, .. } => token.lexeme().to_string(),
-            Expr::StringLit { token, .. } => {
+            Expr::StringLit { token, .. } | Expr::ByteStringLit { token, .. } => {
                 format!("\"{}\"", token.lexeme())
             }
             Expr::Binary {
