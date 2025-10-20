@@ -49,17 +49,21 @@ paraan una() {
     // users to have immutable variables when they can,
     // as it can increase readability of the program :).
     //
+    ang tao = Tao::bago(8, 10) // Calls the `bago` static method from `Tao`
+    ang edad = tao.edad // Field access
+    ang tuig = tao.get_tuig() // Method call
+
     // One more thing is that variables have their types inferred
     // when you initialize them. Remember that Tol is a statically-typed
     // programming language, so even though you did NOT provide the types,
     // what the compiler inferred as the type of that variable will be its
     // type and it cannot be assigned with another type.
-    ang tao = Tao::bago(8, 10) // Calls the `bago` static method from `Tao`
-    ang edad = tao.edad // Field access
-    ang tuig = tao.get_tuig() // Method call
+    ang numero = 67
+    // numero = 41 // ERROR
+    ang maiba numero_maiba = 67
+    numero_maiba = 41 // OK
 
     ang dagdag = 5
-    // dagdag = 2 // ERROR!
     ang resulta = dagdag.idagdag_sa(1)
     ang res = i32::wala_lang() - 42 // Will result in 0
 

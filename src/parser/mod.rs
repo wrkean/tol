@@ -208,7 +208,13 @@ impl<'a> Parser<'a> {
             )?
             .clone();
 
-        let mutable = matches!(self.peek().kind(), TokenKind::Maiba);
+        let mutable = match self.peek().kind() {
+            TokenKind::Maiba => {
+                self.advance();
+                true
+            }
+            _ => false,
+        };
 
         let ang_identifier = self
             .consume(
