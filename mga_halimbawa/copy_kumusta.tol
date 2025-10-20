@@ -1,24 +1,13 @@
-// THIS IS A QUICK WALKTHROUGH OF AN EXAMPLE TOL PROGRAM.
-// THIS IS MADE FOR PEOPLE THAT CAME FROM OTHER PROGRAMMING LANGUAGES.
-
-// `bagay` lets you create 'objects' which
-// can hold arbitrary amount of data of different types
 bagay Tao {
     edad: i32,
     tuig: u32,
 }
 
-// `itupad` lets you attach methods onto the object indicated
-// after the keyword
 itupad Tao {
-    // When `ako` keyword is not in the first parameter,
-    // the method is static
     paraan bago(edad: i32, tuig: u32) Tao {
         ibalik Tao!(edad: edad, tuig: tuig)
     }
 
-    // When `ako` keyword is encountered as the first
-    // parameter, it is a member method
     paraan get_tuig(ako) u32 {
         ako.tuig
     }
@@ -28,7 +17,6 @@ bagay Hayop {
     edad: u8,
 }
 
-// `itupad` lets you attach methods on primitive types too
 itupad i32 {
     paraan idagdag_sa(ako, iba: i32) i32 {
         ibalik ako + iba
@@ -39,27 +27,12 @@ itupad i32 {
     }
 }
 
-// `paraan` lets you define a function
 paraan una() {
-    // `ang` lets you initialize a variable.
-    // In Tol, you cannot have an uninitialized variable,
-    // all variables in Tol are initialized.
-    //
-    // By default, variables in Tol are immutable, this will encourage
-    // users to have immutable variables when they can,
-    // as it can increase readability of the program :).
-    //
-    // One more thing is that variables have their types inferred
-    // when you initialize them. Remember that Tol is a statically-typed
-    // programming language, so even though you did NOT provide the types,
-    // what the compiler inferred as the type of that variable will be its
-    // type and it cannot be assigned with another type.
     ang tao = Tao::bago(8, 10) // Calls the `bago` static method from `Tao`
     ang edad = tao.edad // Field access
     ang tuig = tao.get_tuig() // Method call
 
     ang dagdag = 5
-    // dagdag = 2 // ERROR!
     ang resulta = dagdag.idagdag_sa(1)
     ang res = i32::wala_lang() - 42 // Will result in 0
 

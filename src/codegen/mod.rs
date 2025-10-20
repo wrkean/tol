@@ -246,6 +246,13 @@ impl<'a> CodeGenerator<'a> {
                     self.gen_expression(right)
                 )
             }
+            Expr::Assign { left, right, .. } => {
+                format!(
+                    "{} = {}",
+                    self.gen_expression(left),
+                    self.gen_expression(right)
+                )
+            }
             Expr::Block { .. } => self.gen_block(expr, BlockContext::StandAlone),
             Expr::FnCall { callee, args, .. } => {
                 let mut args_str_c = String::from("(");

@@ -6,6 +6,7 @@ use crate::toltype::TolType;
 pub enum Symbol {
     Var {
         name: String,
+        mutable: bool,
         tol_type: TolType,
     },
     Paraan {

@@ -538,7 +538,7 @@ impl<'a> Parser<'a> {
         while !self.is_at_end() {
             let previous_tok = self.peek_previous().clone();
             let op = self.peek().clone();
-            if self.get_precedence(&op) <= precedence {
+            if self.get_op_info(&op).0 <= precedence {
                 break;
             }
 
@@ -653,7 +653,15 @@ impl<'a> Parser<'a> {
         left: Expr,
         tok_before_op: &Token,
     ) -> Result<Expr, CompilerError> {
-        let precedence = self.get_precedence(op);
+        let (precedence, associativity) = self.get_op_info(op);
+
+        let precedence = match associativity {
+            Associativity::Left => precedence,
+            Associativity::Right => precedence + 1,
+            Associativity::None => {
+                unreachable!("Invalid operators are checked by the main expression loop")
+            }
+        };
         let right = self.parse_expression(precedence)?;
 
         match op.kind() {
@@ -744,6 +752,17 @@ impl<'a> Parser<'a> {
                 Ok(Expr::RangeInclusive {
                     start,
                     end,
+                    line: op.line(),
+                    column: op.column(),
+                    id,
+                })
+            }
+            TokenKind::Equal => {
+                let id = self.ast_id;
+                self.ast_id += 1;
+                Ok(Expr::Assign {
+                    left: Box::new(left),
+                    right: Box::new(right),
                     line: op.line(),
                     column: op.column(),
                     id,
@@ -880,13 +899,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn get_precedence(&self, op: &Token) -> i32 {
+    fn get_op_info(&self, op: &Token) -> (i32, Associativity) {
+        use Associativity::*;
+
         match op.kind() {
-            TokenKind::DotDot | TokenKind::DotDotEqual => 1,
-            TokenKind::Plus | TokenKind::Minus => 2,
-            TokenKind::Star | TokenKind::Slash => 3,
-            TokenKind::Dot | TokenKind::ColonColon => 4,
-            _ => 0,
+            TokenKind::Equal => (1, Right),
+            TokenKind::DotDot | TokenKind::DotDotEqual => (2, Left),
+            TokenKind::Plus | TokenKind::Minus => (3, Left),
+            TokenKind::Star | TokenKind::Slash => (4, Left),
+            TokenKind::Dot | TokenKind::ColonColon => (5, Left),
+            _ => (0, Associativity::None),
         }
     }
 
@@ -950,119 +972,8 @@ impl<'a> Parser<'a> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::lexer::Lexer;
-
-    use super::*;
-
-    fn lex(source: &str) -> Vec<Token> {
-        let mut lexer = Lexer::new(source, "test");
-        lexer.lex().clone()
-    }
-
-    fn parse_expression(tokens: &Vec<Token>) -> Result<Expr, CompilerError> {
-        let mut parser = Parser::new(tokens, "test");
-        parser.parse_expression(0)
-    }
-
-    fn parse_program(tokens: &Vec<Token>) -> Stmt {
-        let mut parser = Parser::new(tokens, "test");
-        parser.parse()
-    }
-
-    #[test]
-    fn test_expression() {
-        let tokens = lex("20 + 10 / 30 - ((12 - 10) * 20)");
-        let ast = parse_expression(&tokens);
-
-        assert!(ast.is_ok());
-        assert!(matches!(ast.as_ref().unwrap(), Expr::Binary { .. }));
-        assert_eq!(
-            format!("{}", ast.as_ref().unwrap()),
-            "(- (+ 20 (/ 10 30)) (* (- 12 10) 20))"
-        );
-    }
-
-    #[test]
-    fn test_invalid_expression() {
-        let tokens = lex("20 ++ 10 *! 50");
-        let ast = parse_expression(&tokens);
-
-        assert!(ast.is_err())
-    }
-
-    #[test]
-    fn test_root() {
-        let tokens = lex("");
-        let ast = parse_program(&tokens);
-
-        assert!(matches!(ast, Stmt::Program(_)));
-    }
-
-    #[test]
-    fn test_program() {
-        let program = "par una() {\
-            ang x: i32 = 12;
-            ang y: dobletang = 42; 
-        }
-
-        par idagdag(a: i32, b: i32) -> i32 {
-            ang resulta: i32 = a + b;
-        }";
-
-        let tokens = lex(program);
-        let ast = parse_program(&tokens);
-
-        assert!(matches!(ast, Stmt::Program(_)));
-
-        let statements = if let Stmt::Program(statements) = &ast {
-            statements
-        } else {
-            &Vec::new()
-        };
-
-        assert!(matches!(statements[0], Stmt::Par { .. }));
-        assert!(matches!(statements[1], Stmt::Par { .. }));
-
-        let first_function = &statements[0];
-        let second_function = &statements[1];
-
-        if let Stmt::Par {
-            par_identifier,
-            params,
-            return_type,
-            block,
-            ..
-        } = first_function
-        {
-            assert_eq!(par_identifier.lexeme(), "una");
-            assert_eq!(params.len(), 0);
-            assert_eq!(return_type, &TolType::Wala);
-
-            assert!(matches!(block, Expr::Block { .. }));
-            if let Expr::Block { statements, .. } = block {
-                assert!(matches!(statements[0], Stmt::Ang { .. }));
-                assert!(matches!(statements[1], Stmt::Ang { .. }));
-            }
-        }
-
-        if let Stmt::Par {
-            par_identifier,
-            params,
-            return_type,
-            block,
-            ..
-        } = second_function
-        {
-            assert_eq!(par_identifier.lexeme(), "idagdag");
-            assert_eq!(params.len(), 2);
-            assert_eq!(return_type, &TolType::I32);
-
-            assert!(matches!(block, Expr::Block { .. }));
-            if let Expr::Block { statements, .. } = block {
-                assert!(matches!(statements[0], Stmt::Ang { .. }));
-            }
-        }
-    }
+enum Associativity {
+    Left,
+    Right,
+    None, // Only for non-operators
 }

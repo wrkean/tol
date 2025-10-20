@@ -30,6 +30,13 @@ pub enum Expr {
         right: Box<Expr>,
         id: usize,
     },
+    Assign {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
     FnCall {
         callee: Token,
         args: Vec<Expr>,
@@ -118,5 +125,14 @@ impl fmt::Display for Expr {
             }
             _ => write!(f, ""),
         }
+    }
+}
+
+impl Expr {
+    pub fn is_lvalue(&self) -> bool {
+        matches!(
+            self,
+            Self::Identifier { .. } | Self::FieldAccess { .. } | Self::StaticFieldAccess { .. }
+        )
     }
 }

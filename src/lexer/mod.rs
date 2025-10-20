@@ -135,6 +135,13 @@ impl<'a> Lexer<'a> {
             '/' => {
                 if self.match_char('=') {
                     self.add_token(TokenKind::SlashEqual, None);
+                } else if self.match_char('/') {
+                    while let Some(c) = self.peek() {
+                        if c == &'\n' {
+                            break;
+                        }
+                        self.advance();
+                    }
                 } else {
                     self.add_token(TokenKind::Slash, None);
                 }

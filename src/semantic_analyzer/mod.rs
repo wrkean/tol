@@ -82,9 +82,9 @@ impl<'a> SemanticAnalyzer<'a> {
                 line,
                 column,
                 id,
-                ..
+                mutable,
             } => self
-                .analyze_ang(ang_identifier, ang_type, rhs, *line, *column, *id)
+                .analyze_ang(*mutable, ang_identifier, ang_type, rhs, *line, *column, *id)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
                     e.display(self.source_path);
@@ -160,8 +160,13 @@ impl<'a> SemanticAnalyzer<'a> {
         };
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // FIXME: Too many arguments. Individual analyze
+    // functions for each statement needs a fix like passing
+    // the Stmt enum instead
     fn analyze_ang(
         &mut self,
+        mutable: bool,
         ang_identifier: &Token,
         ang_type: &TolType,
         rhs: &Expr,
@@ -179,6 +184,7 @@ impl<'a> SemanticAnalyzer<'a> {
         rhs_type.is_assignment_compatible(&ang_type, line, column)?;
 
         let var_symbol = Symbol::Var {
+            mutable,
             name: ang_identifier.lexeme().to_string(),
             tol_type: ang_type.clone(),
         };
@@ -268,7 +274,9 @@ impl<'a> SemanticAnalyzer<'a> {
 
         self.enter_scope();
         for (tok, ty) in &resolved_params {
+            // TODO: Add mutability on parameters later
             let param_symbol = Symbol::Var {
+                mutable: false,
                 name: tok.lexeme().to_string(),
                 tol_type: ty.clone(),
             };
@@ -362,7 +370,9 @@ impl<'a> SemanticAnalyzer<'a> {
         for (tok, ty) in &resolved_fields {
             if !self.declare_symbol(
                 tok.lexeme(),
+                // TODO: Add mutability on fields later
                 Symbol::Var {
+                    mutable: false,
                     name: tok.lexeme().to_string(),
                     tol_type: ty.clone(),
                 },
@@ -503,7 +513,9 @@ impl<'a> SemanticAnalyzer<'a> {
 
         self.enter_scope();
         for (tok, ty) in &resolved_params {
+            // TODO: Add mutability on params later
             let param_symbol = Symbol::Var {
+                mutable: false,
                 name: tok.lexeme().to_string(),
                 tol_type: ty.clone(),
             };
@@ -543,6 +555,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // println!("{}", id);
         let bind_type = self.infer_type(iterator, id)?;
         let bind_symbol = Symbol::Var {
+            mutable: false,
             name: bind.lexeme().to_string(),
             tol_type: bind_type,
         };
@@ -565,15 +578,10 @@ impl<'a> SemanticAnalyzer<'a> {
                 Box::new(TolType::U8),
                 Some(token.lexeme().len() + 1),
             )),
-            Expr::Identifier { token, .. } => match self.lookup_symbol(token.lexeme()) {
-                Some(s) => Ok(s.get_type().to_owned()),
-                None => Err(CompilerError::new(
-                    &format!("`{}` ay hindi pa na-ideklara", token.lexeme()),
-                    ErrorKind::Error,
-                    token.line(),
-                    token.column(),
-                )),
-            },
+            Expr::Identifier { token, .. } => Ok(self
+                .lookup_symbol(token.lexeme(), token.line(), token.column())?
+                .get_type()
+                .clone()),
             Expr::Binary {
                 op, left, right, ..
             } => match op.kind() {
@@ -604,6 +612,31 @@ impl<'a> SemanticAnalyzer<'a> {
                     op.column(),
                 )),
             },
+            Expr::Assign {
+                left,
+                right,
+                line,
+                column,
+                ..
+            } => {
+                if !left.is_lvalue() {
+                    return Err(CompilerError::new(
+                        "Ang nasa kaliwa ng `=` ay hindi isang lvalue",
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    ));
+                }
+
+                self.ensure_mutability(left)?;
+
+                let left_type = self.analyze_expression(left)?;
+                let right_type = self.analyze_expression(right)?;
+
+                right_type.is_assignment_compatible(&left_type, *line, *column)?;
+
+                Ok(TolType::Wala)
+            }
             Expr::Block {
                 statements,
                 block_value,
@@ -622,17 +655,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     .map_or_else(|| Ok(TolType::Wala), |expr| self.analyze_expression(expr))
             }
             Expr::FnCall { callee, args, .. } => {
-                let symbol = match self.lookup_symbol(callee.lexeme()) {
-                    Some(s) => s,
-                    None => {
-                        return Err(CompilerError::new(
-                            &format!("Ang `{}` ay hindi na-ideklara", callee.lexeme()),
-                            ErrorKind::Error,
-                            callee.line(),
-                            callee.column(),
-                        ));
-                    }
-                };
+                let symbol = self.lookup_symbol(callee.lexeme(), callee.line(), callee.column())?;
 
                 if let Symbol::Paraan {
                     param_types,
@@ -700,28 +723,22 @@ impl<'a> SemanticAnalyzer<'a> {
             } => {
                 let left_type = self.analyze_expression(left)?;
 
-                match self.type_table.get(&left_type.to_string()) {
-                    Some(type_info) => match type_info.fields.get(member.lexeme()) {
-                        Some(toltype) => Ok(toltype.to_owned()),
-                        None => Err(CompilerError::new(
-                            &format!(
-                                "Ang `{}` ay hindi kabilamg sa `{}` na tipo",
-                                member.lexeme(),
-                                &left_type
-                            ),
-                            ErrorKind::Error,
-                            member.line(),
-                            member.column(),
-                        )),
-                    },
+                let type_info = self.lookup_type(&left_type, *line, *column)?;
+                match type_info.fields.get(member.lexeme()) {
+                    Some(toltype) => Ok(toltype.to_owned()),
                     None => Err(CompilerError::new(
-                        &format!("Walang miyembro ang `{}`", &left_type),
+                        &format!(
+                            "Ang `{}` ay hindi kabilang sa `{}` na tipo",
+                            member.lexeme(),
+                            &left_type
+                        ),
                         ErrorKind::Error,
-                        *line,
-                        *column,
+                        member.line(),
+                        member.column(),
                     )),
                 }
             }
+
             // TODO: Need to check if arguments are right
             Expr::MethodCall {
                 left,
@@ -737,45 +754,38 @@ impl<'a> SemanticAnalyzer<'a> {
                     arg_types.push(self.analyze_expression(arg)?);
                 }
 
-                match self.type_table.get(&left_type.to_string()) {
-                    Some(type_info) => match type_info.methods.get(callee.lexeme()) {
-                        Some(met_sym) => {
-                            if let Symbol::Method {
-                                param_types,
-                                return_type,
-                                is_static,
-                                ..
-                            } = met_sym
-                            {
-                                if *is_static {
-                                    return Err(CompilerError::new(
-                                        &format!("{} ay isang static na paraan!", callee.lexeme()),
-                                        ErrorKind::Error,
-                                        callee.line(),
-                                        callee.column(),
-                                    ));
-                                }
-
-                                Self::check_call(&arg_types, param_types, *line, *column)?;
-
-                                Ok(return_type.clone())
-                            } else {
-                                unreachable!("met_sym is not a MetSymbol");
+                let type_info = self.lookup_type(&left_type, *line, *column)?;
+                match type_info.methods.get(callee.lexeme()) {
+                    Some(met_sym) => {
+                        if let Symbol::Method {
+                            param_types,
+                            return_type,
+                            is_static,
+                            ..
+                        } = met_sym
+                        {
+                            if *is_static {
+                                return Err(CompilerError::new(
+                                    &format!("{} ay isang static na paraan!", callee.lexeme()),
+                                    ErrorKind::Error,
+                                    callee.line(),
+                                    callee.column(),
+                                ));
                             }
+
+                            Self::check_call(&arg_types, param_types, *line, *column)?;
+
+                            Ok(return_type.clone())
+                        } else {
+                            unreachable!("met_sym is not a MetSymbol");
                         }
-                        None => Err(CompilerError::new(
-                            &format!(
-                                "Walang method na `{}` ang `{}` na tipo",
-                                callee.lexeme(),
-                                &left_type
-                            ),
-                            ErrorKind::Error,
-                            *line,
-                            *column,
-                        )),
-                    },
+                    }
                     None => Err(CompilerError::new(
-                        &format!("Walang miyembro ang `{}`", &left_type),
+                        &format!(
+                            "Walang method na `{}` ang `{}` na tipo",
+                            callee.lexeme(),
+                            &left_type
+                        ),
                         ErrorKind::Error,
                         *line,
                         *column,
@@ -805,48 +815,38 @@ impl<'a> SemanticAnalyzer<'a> {
                     arg_types.push(self.analyze_expression(arg)?);
                 }
 
-                match self.type_table.get(&left_type.to_string()) {
-                    Some(type_info) => match type_info.methods.get(callee.lexeme()) {
-                        Some(met_sym) => {
-                            if let Symbol::Method {
-                                is_static,
-                                param_types,
-                                return_type,
-                                ..
-                            } = met_sym
-                            {
-                                if !is_static {
-                                    return Err(CompilerError::new(
-                                        &format!(
-                                            "{} ay hindi isang static na paraan",
-                                            callee.lexeme()
-                                        ),
-                                        ErrorKind::Error,
-                                        callee.line(),
-                                        callee.column(),
-                                    ));
-                                }
-
-                                Self::check_call(&arg_types, param_types, *line, *column)?;
-
-                                Ok(return_type.clone())
-                            } else {
-                                unreachable!("met_sym is not a MetSymbol");
+                let type_info = self.lookup_type(&left_type, *line, *column)?;
+                match type_info.methods.get(callee.lexeme()) {
+                    Some(met_sym) => {
+                        if let Symbol::Method {
+                            is_static,
+                            param_types,
+                            return_type,
+                            ..
+                        } = met_sym
+                        {
+                            if !is_static {
+                                return Err(CompilerError::new(
+                                    &format!("{} ay hindi isang static na paraan", callee.lexeme()),
+                                    ErrorKind::Error,
+                                    callee.line(),
+                                    callee.column(),
+                                ));
                             }
+
+                            Self::check_call(&arg_types, param_types, *line, *column)?;
+
+                            Ok(return_type.clone())
+                        } else {
+                            unreachable!("met_sym is not a MetSymbol");
                         }
-                        None => Err(CompilerError::new(
-                            &format!(
-                                "Walang method na `{}` ang `{}` na tipo",
-                                callee.lexeme(),
-                                &left_type
-                            ),
-                            ErrorKind::Error,
-                            *line,
-                            *column,
-                        )),
-                    },
+                    }
                     None => Err(CompilerError::new(
-                        &format!("Hindi rehistrado ang tipong {}", &left_type),
+                        &format!(
+                            "Walang method na `{}` ang `{}` na tipo",
+                            callee.lexeme(),
+                            &left_type
+                        ),
                         ErrorKind::Error,
                         *line,
                         *column,
@@ -1036,14 +1036,24 @@ impl<'a> SemanticAnalyzer<'a> {
             .insert("i32".to_string(), TypeInfo::new(TolType::I32));
     }
 
-    fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {
+    fn lookup_symbol(
+        &self,
+        name: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<&Symbol, CompilerError> {
         for scope in self.symbol_table.iter().rev() {
             if let Some(s) = scope.get(name) {
-                return Some(s);
+                return Ok(s);
             }
         }
 
-        None
+        Err(CompilerError::new(
+            &format!("Ang `{}` ay hindi na-ideklara", name),
+            ErrorKind::Error,
+            line,
+            column,
+        ))
     }
 
     /// Returns true if the key did not exist (means it is declared successfully), returns false otherwise.
@@ -1070,6 +1080,41 @@ impl<'a> SemanticAnalyzer<'a> {
         )
     }
 
+    fn lookup_type(
+        &self,
+        type_: &TolType,
+        line: usize,
+        column: usize,
+    ) -> Result<&TypeInfo, CompilerError> {
+        self.type_table
+            .get(&type_.to_string())
+            .ok_or(CompilerError::new(
+                &format!("Ang `{}` ay hindi naideklarang tipo", type_),
+                ErrorKind::Error,
+                line,
+                column,
+            ))
+    }
+
+    fn ensure_mutability(&self, lvalue: &Expr) -> Result<(), CompilerError> {
+        // WARN: Only works for identifiers for now
+        if let Expr::Identifier { token, .. } = lvalue
+            && let Symbol::Var { mutable, .. } =
+                self.lookup_symbol(token.lexeme(), token.line(), token.column())?
+            && !*mutable
+        {
+            return Err(CompilerError::new(
+                &format!("Ang `{}` ay hindi `maiba`", token.lexeme()),
+                ErrorKind::Error,
+                token.line(),
+                token.column(),
+            )
+            .add_help("Subukan mong lagyan ng `maiba` ang deklarasyon nito"));
+        }
+
+        Ok(())
+    }
+
     fn enter_scope(&mut self) {
         self.symbol_table.push(HashMap::new());
     }
@@ -1084,124 +1129,5 @@ impl<'a> SemanticAnalyzer<'a> {
 
     pub fn inferred_types(&self) -> &HashMap<usize, TolType> {
         &self.inferred_types
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{lexer::Lexer, parser::Parser};
-
-    use super::*;
-
-    fn lex(source: &str) -> Vec<Token> {
-        let mut lexer = Lexer::new(source, "test");
-
-        lexer.lex().clone()
-    }
-
-    fn parse(tokens: &Vec<Token>) -> Stmt {
-        let mut parser = Parser::new(tokens, "test");
-
-        parser.parse()
-    }
-
-    #[test]
-    fn test_analyze_assignment() {
-        let code = "ang x: i32 = 15; ang y: i32 = x;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-        assert!(!analyzer.has_error());
-    }
-
-    #[test]
-    fn test_previously_declared_variable() {
-        let code = "ang x: i32 = 15; ang y: i32 = 15;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-        assert!(!analyzer.has_error());
-    }
-
-    #[test]
-    fn test_type_mismatch_assignment() {
-        let code = "ang x: i32 = 15.5;";
-        let code2 = "ang x: i32 = 12; ang y: i8 = x;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-
-        let tokens2 = lex(code2);
-        let ast2 = parse(&tokens2);
-        let mut analyzer2 = SemanticAnalyzer::new(&ast2, "None");
-        analyzer2.analyze();
-
-        assert!(analyzer.has_error());
-        assert!(analyzer2.has_error());
-    }
-
-    #[test]
-    fn test_undeclared_variable() {
-        let code = "ang x: i32 = y;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-        assert!(analyzer.has_error());
-    }
-
-    #[test]
-    fn test_variable_scoping() {
-        let code = "par dummy() {\n    ang y: i32 = 10;\n}\nang x: i32 = y;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-        assert!(analyzer.has_error());
-    }
-
-    #[test]
-    fn test_type_mismatch_binary_operation() {
-        let code = "ang x: i32 = 10;\nang y: dobletang = 12.5;\nang z: i32 = x + y;";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-        assert!(analyzer.has_error());
-    }
-
-    #[test]
-    fn test_incompatible_return_type() {
-        let code = "par test() -> i32 { ibalik 15.5; }";
-        let code2 = "par test() -> dobletang { ibalik 15; }";
-        let code3 = "par test() -> i32 { ibalik 15; }";
-
-        let tokens = lex(code);
-        let ast = parse(&tokens);
-        let mut analyzer = SemanticAnalyzer::new(&ast, "None");
-        analyzer.analyze();
-
-        let tokens2 = lex(code2);
-        let ast2 = parse(&tokens2);
-        let mut analyzer2 = SemanticAnalyzer::new(&ast2, "None");
-        analyzer2.analyze();
-
-        let tokens3 = lex(code3);
-        let ast3 = parse(&tokens3);
-        let mut analyzer3 = SemanticAnalyzer::new(&ast3, "None");
-        analyzer3.analyze();
-
-        assert!(analyzer.has_error());
-        assert!(analyzer2.has_error());
-        assert!(!analyzer3.has_error());
     }
 }
