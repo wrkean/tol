@@ -66,7 +66,12 @@ impl<'a> Parser<'a> {
             TokenKind::Itupad => self.parse_itupad(),
             TokenKind::Kung => self.parse_kung(),
             TokenKind::Sa => self.parse_sa(), // Pharsa?
-            _ => self.parse_expr_stmt(),
+            _ => {
+                let expr_stmt = self.parse_expr_stmt();
+                self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
+
+                expr_stmt
+            }
         }
     }
 
@@ -104,7 +109,7 @@ impl<'a> Parser<'a> {
             par_identifier,
             params,
             return_type,
-            block,
+            block: Box::new(block),
             line: par_tok.line(),
             column: par_tok.column(),
             id,
@@ -154,45 +159,22 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    fn parse_block(&mut self) -> Result<Expr, CompilerError> {
+    fn parse_block(&mut self) -> Result<Stmt, CompilerError> {
         let left_brace_tok = self
             .consume(TokenKind::LeftBrace, self.expect_err("`{`"))?
             .clone();
 
         let mut statements = Vec::new();
-        let mut block_value = None;
         while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBrace {
-            let statement = self.parse_statement()?;
-
-            if let Stmt::ExprS { expr, .. } = &statement {
-                if self.peek().kind() == &TokenKind::RightBrace {
-                    block_value = Some(Box::new(expr.clone()));
-                } else {
-                    self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
-                    statements.push(statement);
-                }
-            } else {
-                statements.push(statement);
-            }
+            statements.push(self.parse_statement()?);
         }
 
-        if self.is_at_end() {
-            return Err(CompilerError::new(
-                "Hindi naisara ang `{{` dito",
-                ErrorKind::Error,
-                left_brace_tok.line(),
-                left_brace_tok.column(),
-            )
-            .add_help("Isarado gamit ang `}}`"));
-        }
-
-        self.advance(); // Consumes `}`
+        self.consume(TokenKind::RightBrace, self.expect_err("`}`"))?;
 
         let id = self.ast_id;
         self.ast_id += 1;
-        Ok(Expr::Block {
+        Ok(Stmt::Block {
             statements,
-            block_value,
             line: left_brace_tok.line(),
             column: left_brace_tok.column(),
             id,
@@ -392,7 +374,7 @@ impl<'a> Parser<'a> {
             met_identifier,
             params,
             return_type,
-            block,
+            block: Box::new(block),
             line: par_tok.line(),
             column: par_tok.column(),
             id,
@@ -432,7 +414,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Sa {
             iterator,
             bind,
-            block,
+            block: Box::new(block),
             line: sa_tok.line(),
             column: sa_tok.column(),
             id,

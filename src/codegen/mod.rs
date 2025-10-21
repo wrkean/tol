@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::{
-    codegen::block_context::BlockContext,
     lexer::token::Token,
     parser::ast::{expr::Expr, stmt::Stmt},
     toltype::TolType,
@@ -85,7 +84,7 @@ impl<'a> CodeGenerator<'a> {
                     _ => id_c,
                 };
                 let params_c = self.gen_params(params, None);
-                let block_c = self.gen_block(block, BlockContext::Function);
+                let block_c = self.gen_block(block);
 
                 format!("{type_c} {id_c}{params_c}{block_c}")
             }
@@ -130,19 +129,16 @@ impl<'a> CodeGenerator<'a> {
                         if_c.push_str(&format!(
                             "if ({}){}",
                             self.gen_expression(branch.condition.as_ref().unwrap()),
-                            self.gen_block(&branch.block, BlockContext::Function)
+                            self.gen_block(&branch.block)
                         ));
                     } else if let Some(expr) = &branch.condition {
                         if_c.push_str(&format!(
                             "else if ({}){}",
                             self.gen_expression(expr),
-                            self.gen_block(&branch.block, BlockContext::Function)
+                            self.gen_block(&branch.block)
                         ));
                     } else if branch.condition.is_none() {
-                        if_c.push_str(&format!(
-                            "else {}",
-                            self.gen_block(&branch.block, BlockContext::Function)
-                        ));
+                        if_c.push_str(&format!("else {}", self.gen_block(&branch.block)));
                     }
                 }
 
@@ -160,7 +156,7 @@ impl<'a> CodeGenerator<'a> {
                     let bind_id_c = bind.lexeme();
                     let start_c = self.gen_expression(start);
                     let end_c = self.gen_expression(end);
-                    let block_c = self.gen_expression(block);
+                    let block_c = self.gen_block(block);
 
                     format!(
                         "for ({bind_type} {bind_id_c} = {start_c}; {bind_id_c} < {end_c}; {bind_id_c}++) {block_c}"
@@ -171,7 +167,7 @@ impl<'a> CodeGenerator<'a> {
                     let bind_id_c = bind.lexeme();
                     let start_c = self.gen_expression(start);
                     let end_c = self.gen_expression(end);
-                    let block_c = self.gen_expression(block);
+                    let block_c = self.gen_block(block);
 
                     format!(
                         "for ({bind_type} {bind_id_c} = {start_c}; {bind_id_c} <= {end_c}; {bind_id_c}++) {block_c}"
@@ -200,7 +196,7 @@ impl<'a> CodeGenerator<'a> {
             let type_c = return_type.as_c();
             let id_c = met_identifier.lexeme();
             let params_c = self.gen_params(params, Some(itupad_for));
-            let block_c = self.gen_block(block, BlockContext::Function);
+            let block_c = self.gen_block(block);
 
             format!("{type_c} {id_c}{params_c}{block_c}")
         } else {
@@ -253,7 +249,6 @@ impl<'a> CodeGenerator<'a> {
                     self.gen_expression(right)
                 )
             }
-            Expr::Block { .. } => self.gen_block(expr, BlockContext::StandAlone),
             Expr::FnCall { callee, args, .. } => {
                 let mut args_str_c = String::from("(");
                 for arg in args {
@@ -359,21 +354,13 @@ impl<'a> CodeGenerator<'a> {
         }
     }
 
-    fn gen_block(&self, block: &Expr, context: BlockContext) -> String {
-        if let Expr::Block {
-            statements,
-            block_value,
-            ..
-        } = block
-        {
+    fn gen_block(&self, block: &Stmt) -> String {
+        if let Stmt::Block { statements, .. } = block {
             let mut out = String::from("{");
             for statement in statements {
                 out.push_str(&self.gen_statement(statement));
             }
 
-            if let (BlockContext::Function, Some(val)) = (context, block_value) {
-                out.push_str(&format!("return {};", self.gen_expression(val)));
-            }
             out.push('}');
 
             out

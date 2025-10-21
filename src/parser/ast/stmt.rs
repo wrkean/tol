@@ -7,7 +7,7 @@ pub enum Stmt {
         par_identifier: Token,
         params: Vec<(Token, TolType)>,
         return_type: TolType,
-        block: Expr,
+        block: Box<Stmt>,
         line: usize,
         column: usize,
         id: usize,
@@ -17,7 +17,7 @@ pub enum Stmt {
         met_identifier: Token,
         params: Vec<(Token, TolType)>,
         return_type: TolType,
-        block: Expr,
+        block: Box<Stmt>,
         line: usize,
         column: usize,
         id: usize,
@@ -39,6 +39,12 @@ pub enum Stmt {
     },
     ExprS {
         expr: Expr,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
+    Block {
+        statements: Vec<Stmt>,
         line: usize,
         column: usize,
         id: usize,
@@ -70,7 +76,7 @@ pub enum Stmt {
     Sa {
         iterator: Expr,
         bind: Token,
-        block: Expr,
+        block: Box<Stmt>,
         line: usize,
         column: usize,
         id: usize,
@@ -80,5 +86,5 @@ pub enum Stmt {
 #[derive(Debug, PartialEq, Clone)]
 pub struct KungBranch {
     pub condition: Option<Expr>,
-    pub block: Expr,
+    pub block: Stmt,
 }

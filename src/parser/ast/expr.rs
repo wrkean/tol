@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{lexer::token::Token, parser::ast::stmt::Stmt, toltype::TolType};
+use crate::{lexer::token::Token, toltype::TolType};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
@@ -44,13 +44,6 @@ pub enum Expr {
     },
     MagicFnCall {
         fncall: Box<Expr>,
-        id: usize,
-    },
-    Block {
-        statements: Vec<Stmt>,
-        block_value: Option<Box<Expr>>,
-        line: usize,
-        column: usize,
         id: usize,
     },
     FieldAccess {

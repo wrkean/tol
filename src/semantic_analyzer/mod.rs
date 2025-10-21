@@ -153,6 +153,10 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.has_error = true;
                     e.display(self.source_path);
                 }),
+            Stmt::Block { statements, .. } => self.analyze_block(statements).unwrap_or_else(|e| {
+                self.has_error = true;
+                e.display(self.source_path);
+            }),
             // TODO: analyze ts
             Stmt::ItupadBlock { .. } => {}
             Stmt::Method { .. } => {}
@@ -244,7 +248,7 @@ impl<'a> SemanticAnalyzer<'a> {
         par_identifier: &Token,
         params: &[(Token, TolType)],
         return_type: &TolType,
-        block: &Expr,
+        block: &Stmt,
         // line: &usize,
         // column: &usize,
     ) -> Result<(), CompilerError> {
@@ -286,12 +290,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         self.current_func_return_type = resolved_return.clone();
-        let last_expr_type = self.analyze_expression(block)?;
-        last_expr_type.is_assignment_compatible(
-            &self.current_func_return_type,
-            par_identifier.line(),
-            par_identifier.column(),
-        )?;
+        self.analyze_stmt(block);
         self.exit_scope();
 
         Ok(())
@@ -485,7 +484,7 @@ impl<'a> SemanticAnalyzer<'a> {
         met_identifier: &Token,
         params: &[(Token, TolType)],
         return_type: &TolType,
-        block: &Expr,
+        block: &Stmt,
     ) -> Result<Symbol, CompilerError> {
         let resolved_params: Vec<_> = params
             .iter()
@@ -526,7 +525,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
         self.current_func_return_type = return_type.clone();
         // println!("{:?}", self.symbol_table);
-        self.analyze_expression(block)?;
+        self.analyze_stmt(block);
         self.exit_scope();
 
         Ok(symbol)
@@ -538,7 +537,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.analyze_expression(s)?;
             }
 
-            self.analyze_expression(&branch.block)?;
+            self.analyze_stmt(&branch.block);
         }
 
         Ok(())
@@ -548,7 +547,7 @@ impl<'a> SemanticAnalyzer<'a> {
         &mut self,
         iterator: &Expr,
         bind: &Token,
-        block: &Expr,
+        block: &Stmt,
         id: usize,
     ) -> Result<(), CompilerError> {
         self.enter_scope();
@@ -563,9 +562,20 @@ impl<'a> SemanticAnalyzer<'a> {
         if !self.declare_symbol(bind.lexeme(), bind_symbol) {
             return Err(self.declared_in_scope_err(bind));
         }
-        self.analyze_expression(block)?;
+        self.analyze_stmt(block);
         self.exit_scope();
 
+        Ok(())
+    }
+
+    fn analyze_block(&mut self, statements: &[Stmt]) -> Result<(), CompilerError> {
+        self.enter_scope();
+
+        for statement in statements {
+            self.analyze_stmt(statement);
+        }
+
+        self.exit_scope();
         Ok(())
     }
 
@@ -636,23 +646,6 @@ impl<'a> SemanticAnalyzer<'a> {
                 right_type.is_assignment_compatible(&left_type, *line, *column)?;
 
                 Ok(TolType::Wala)
-            }
-            Expr::Block {
-                statements,
-                block_value,
-                // line,
-                // column,
-                ..
-            } => {
-                self.enter_scope();
-                for statement in statements {
-                    self.analyze_stmt(statement);
-                }
-                self.exit_scope();
-
-                block_value
-                    .as_ref()
-                    .map_or_else(|| Ok(TolType::Wala), |expr| self.analyze_expression(expr))
             }
             Expr::FnCall { callee, args, .. } => {
                 let symbol = self.lookup_symbol(callee.lexeme(), callee.line(), callee.column())?;

@@ -20,7 +20,7 @@ itupad Tao {
     // When `ako` keyword is encountered as the first
     // parameter, it is a member method
     paraan get_tuig(ako) u32 {
-        ako.tuig
+        ibalik ako.tuig
     }
 }
 
