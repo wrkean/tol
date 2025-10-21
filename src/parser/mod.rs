@@ -169,7 +169,16 @@ impl<'a> Parser<'a> {
             statements.push(self.parse_statement()?);
         }
 
-        self.consume(TokenKind::RightBrace, self.expect_err("`}`"))?;
+        if self.is_at_end() {
+            return Err(CompilerError::new(
+                "Hindi naisarado ang `{`",
+                ErrorKind::Error,
+                left_brace_tok.line(),
+                left_brace_tok.column(),
+            ));
+        } else {
+            self.consume(TokenKind::RightBrace, self.expect_err("`}`"))?;
+        }
 
         let id = self.ast_id;
         self.ast_id += 1;
@@ -330,11 +339,20 @@ impl<'a> Parser<'a> {
             .clone();
 
         let mut methods = Vec::new();
-        while self.peek().kind() != &TokenKind::RightBrace {
+        while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBrace {
             methods.push(self.parse_method()?);
         }
 
-        self.advance(); // Consumes `}`
+        if self.is_at_end() {
+            return Err(CompilerError::new(
+                "Hindi naisarado ang `{`",
+                ErrorKind::Error,
+                lb_tok.line(),
+                lb_tok.column(),
+            ));
+        } else {
+            self.consume(TokenKind::RightBrace, self.expect_err("`}`"))?;
+        }
 
         let id = self.ast_id;
         self.ast_id += 1;
@@ -869,6 +887,9 @@ impl<'a> Parser<'a> {
     }
 
     fn synchronize(&mut self) {
+        if self.is_at_end() {
+            return;
+        }
         self.advance();
 
         while !self.is_at_end() {
@@ -956,7 +977,7 @@ impl<'a> Parser<'a> {
     }
 
     fn is_at_end(&self) -> bool {
-        self.current >= self.tokens.len()
+        self.current >= self.tokens.len() - 1
     }
 }
 
