@@ -668,41 +668,9 @@ impl<'a> Parser<'a> {
                 unreachable!("Invalid operators are checked by the main expression loop")
             }
         };
-        let right = self.parse_expression(precedence)?;
 
         match op.kind() {
-            TokenKind::Dot => match right {
-                Expr::Identifier { token, .. } => {
-                    let id = self.ast_id;
-                    self.ast_id += 1;
-                    Ok(Expr::FieldAccess {
-                        left: Box::new(left),
-                        member: token,
-                        line: op.line(),
-                        column: op.column(),
-                        id,
-                    })
-                }
-                // TODO: MethodCall
-                Expr::FnCall { callee, args, .. } => {
-                    let id = self.ast_id;
-                    self.ast_id += 1;
-                    Ok(Expr::MethodCall {
-                        left: Box::new(left),
-                        callee,
-                        args,
-                        line: op.line(),
-                        column: op.column(),
-                        id,
-                    })
-                }
-                _ => Err(CompilerError::new(
-                    "Ang nasa kanan ng `.` ay dapat pangalan o paraan",
-                    ErrorKind::Error,
-                    op.line(),
-                    op.column(),
-                )),
-            },
+            TokenKind::Dot => self.parse_member_access(left),
             TokenKind::ColonColon => {
                 match right {
                     Expr::Identifier { token, .. } => {
@@ -785,6 +753,20 @@ impl<'a> Parser<'a> {
                 })
             }
         }
+    }
+
+    fn parse_member_access(&mut self, left: Expr) -> Result<Expr, CompilerError> {
+        let id = self.ast_id;
+        self.ast_id += 1;
+
+        let member = self.consume(TokenKind::Identifier, self.expect_err("pangalan"))?;
+        Ok(Expr::MemberAccess {
+            left: Box::new(left),
+            member: member.clone(),
+            line: member.line(),
+            column: member.column(),
+            id,
+        })
     }
 
     fn parse_kung(&mut self) -> Result<Stmt, CompilerError> {

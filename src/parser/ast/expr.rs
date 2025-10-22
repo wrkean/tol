@@ -46,7 +46,7 @@ pub enum Expr {
         fncall: Box<Expr>,
         id: usize,
     },
-    FieldAccess {
+    MemberAccess {
         left: Box<Expr>,
         member: Token,
         line: usize,
@@ -125,7 +125,7 @@ impl Expr {
     pub fn is_lvalue(&self) -> bool {
         matches!(
             self,
-            Self::Identifier { .. } | Self::FieldAccess { .. } | Self::StaticFieldAccess { .. }
+            Self::Identifier { .. } | Self::MemberAccess { .. } | Self::StaticFieldAccess { .. }
         )
     }
 }
