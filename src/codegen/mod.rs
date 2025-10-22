@@ -249,14 +249,14 @@ impl<'a> CodeGenerator<'a> {
             }
             Expr::FnCall { callee, args, .. } => match callee.as_ref() {
                 Expr::Identifier { token, .. } => {
-                    format!("{}({})", token.lexeme(), self.gen_args(args))
+                    format!("({}({}))", token.lexeme(), self.gen_args(args))
                 }
                 Expr::MemberAccess { left, member, .. } => {
-                    let mut out = format!("{}({}", member.lexeme(), self.gen_expression(left));
+                    let mut out = format!("({}({}", member.lexeme(), self.gen_expression(left));
                     if !args.is_empty() {
-                        out.push_str(&format!(", {})", self.gen_args(args)));
+                        out.push_str(&format!(", {}))", self.gen_args(args)));
                     } else {
-                        out.push(')');
+                        out.push_str("))");
                     }
                     out
                 }
