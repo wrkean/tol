@@ -350,8 +350,8 @@ impl<'a> SemanticAnalyzer<'a> {
             Entry::Vacant(entry) => {
                 entry.insert(TypeInfo {
                     kind: bagay_type.clone(),
-                    fields: HashMap::new(),
-                    methods: HashMap::new(),
+                    members: HashMap::new(),
+                    static_members: HashMap::new(),
                 });
             }
         }
@@ -383,7 +383,11 @@ impl<'a> SemanticAnalyzer<'a> {
         self.exit_scope();
 
         // Store fields into the type as a map
-        let mut field_map = HashMap::new();
+        let field_map = &mut self
+            .type_table
+            .get_mut(&bagay_type.to_string())
+            .unwrap()
+            .members;
         for (tok, ty) in &resolved_fields {
             if matches!(ty, TolType::Bagay(name) if name == bagay_name) {
                 return Err(CompilerError::new(
@@ -398,11 +402,14 @@ impl<'a> SemanticAnalyzer<'a> {
             }
 
             let field_name = tok.lexeme().to_string();
-            field_map.insert(field_name, ty.clone());
-        }
-
-        if let Some(type_info) = self.type_table.get_mut(&bagay_type.to_string()) {
-            type_info.fields = field_map;
+            field_map.insert(
+                field_name.clone(),
+                Symbol::Var {
+                    name: field_name,
+                    mutable: false,
+                    tol_type: ty.clone(),
+                },
+            );
         }
 
         Ok(())
@@ -457,8 +464,15 @@ impl<'a> SemanticAnalyzer<'a> {
             })?;
 
         for (met_sym, _) in &analyzed_methods {
-            if let Symbol::Method { name, .. } = met_sym {
-                match type_info.methods.entry(name.to_string()) {
+            if let Symbol::Method {
+                name, is_static, ..
+            } = met_sym
+            {
+                let mut insert_to = &mut type_info.members;
+                if *is_static {
+                    insert_to = &mut type_info.static_members;
+                }
+                match insert_to.entry(name.to_string()) {
                     Entry::Occupied(_) => {
                         return Err(CompilerError::new(
                             &format!("May paraan na na `{}` ang tipong `{}`", name, itupad_for),
@@ -579,7 +593,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
+    fn analyze_expression(&self, expr: &Expr) -> Result<TolType, CompilerError> {
         match expr {
             Expr::IntLit { .. } => Ok(TolType::UnsizedInt),
             Expr::FloatLit { .. } => Ok(TolType::UnsizedFloat),
@@ -647,267 +661,36 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 Ok(TolType::Wala)
             }
-            Expr::FnCall { callee, args, .. } => {
-                let symbol = self.lookup_symbol(callee.lexeme(), callee.line(), callee.column())?;
+            Expr::FnCall { line, column, .. } => self.analyze_fncall(expr, *line, *column),
+            Expr::MagicFnCall { name, args, .. } => {
+                let (line, column) = (name.line(), name.column());
+                let arg_types: Vec<TolType> = args
+                    .iter()
+                    .map(|arg| self.analyze_expression(arg))
+                    .collect::<Result<_, CompilerError>>()?;
 
-                if let Symbol::Paraan {
-                    param_types,
-                    return_type,
-                    ..
-                } = symbol
-                {
-                    if args.len() < param_types.len() {
-                        return Err(CompilerError::new(
-                            &format!(
-                                "`{}` lang ang argumento na nailagay, nag-asa ng `{}`",
-                                args.len(),
-                                param_types.len()
-                            ),
-                            ErrorKind::Error,
-                            callee.line(),
-                            callee.column(),
-                        ));
+                let sym = self.lookup_symbol(name.lexeme(), line, column)?;
+                match sym {
+                    Symbol::Paraan {
+                        param_types,
+                        return_type,
+                        ..
+                    } => {
+                        Self::check_call(&arg_types, param_types, line, column)?;
+
+                        Ok(return_type.clone())
                     }
-
-                    if args.len() > param_types.len() {
-                        return Err(CompilerError::new(
-                            &format!(
-                                "`{}` ang nailagay na argumento, nag-asa lang ng `{}`",
-                                args.len(),
-                                param_types.len()
-                            ),
-                            ErrorKind::Error,
-                            callee.line(),
-                            callee.column(),
-                        ));
-                    }
-
-                    let return_type_ = return_type.clone();
-                    let param_types_ = param_types.clone();
-
-                    let mut arg_types = Vec::with_capacity(args.len());
-                    for expr in args {
-                        arg_types.push(self.analyze_expression(expr)?);
-                    }
-
-                    // if arg_types != param_types_ {
-                    //     return Err(CompilerError::new(
-                    //         "Magkaiba ang tipo ng argumento sa mga parametro",
-                    //         ErrorKind::Error,
-                    //         callee.line(),
-                    //         callee.column(),
-                    //     ));
-                    // }
-                    for (arg, param) in arg_types.iter().zip(&param_types_) {
-                        arg.is_assignment_compatible(param, callee.line(), callee.column())?;
-                    }
-
-                    return Ok(return_type_);
-                }
-                panic!("The symbol is not declared as `par` symbol");
-            }
-            Expr::MagicFnCall { fncall, .. } => self.analyze_expression(fncall),
-            Expr::FieldAccess {
-                left,
-                member,
-                line,
-                column,
-                ..
-            } => {
-                let left_type = self.analyze_expression(left)?;
-
-                let type_info = self.lookup_type(&left_type, *line, *column)?;
-                match type_info.fields.get(member.lexeme()) {
-                    Some(toltype) => Ok(toltype.to_owned()),
-                    None => Err(CompilerError::new(
-                        &format!(
-                            "Ang `{}` ay hindi kabilang sa `{}` na tipo",
-                            member.lexeme(),
-                            &left_type
-                        ),
+                    _ => Err(CompilerError::new(
+                        &format!("Hindi nahanap ang `{}`", name.lexeme()),
                         ErrorKind::Error,
-                        member.line(),
-                        member.column(),
+                        line,
+                        column,
                     )),
                 }
             }
-
-            // TODO: Need to check if arguments are right
-            Expr::MethodCall {
-                left,
-                callee,
-                args,
-                line,
-                column,
-                ..
-            } => {
-                let left_type = self.analyze_expression(left)?;
-                let mut arg_types = vec![left_type.clone()];
-                for arg in args {
-                    arg_types.push(self.analyze_expression(arg)?);
-                }
-
-                let type_info = self.lookup_type(&left_type, *line, *column)?;
-                match type_info.methods.get(callee.lexeme()) {
-                    Some(met_sym) => {
-                        if let Symbol::Method {
-                            param_types,
-                            return_type,
-                            is_static,
-                            ..
-                        } = met_sym
-                        {
-                            if *is_static {
-                                return Err(CompilerError::new(
-                                    &format!("{} ay isang static na paraan!", callee.lexeme()),
-                                    ErrorKind::Error,
-                                    callee.line(),
-                                    callee.column(),
-                                ));
-                            }
-
-                            Self::check_call(&arg_types, param_types, *line, *column)?;
-
-                            Ok(return_type.clone())
-                        } else {
-                            unreachable!("met_sym is not a MetSymbol");
-                        }
-                    }
-                    None => Err(CompilerError::new(
-                        &format!(
-                            "Walang method na `{}` ang `{}` na tipo",
-                            callee.lexeme(),
-                            &left_type
-                        ),
-                        ErrorKind::Error,
-                        *line,
-                        *column,
-                    )),
-                }
-            }
-            // Expr::StaticFieldAccess {
-            //     left,
-            //     field,
-            //     line,
-            //     column,
-            // } => {
-            //
-            // }
-            Expr::StaticMethodCall {
-                left,
-                callee,
-                args,
-                line,
-                column,
-                ..
-            } => {
-                let left_type = self.resolve_type(left, callee.line(), callee.column())?;
-
-                let mut arg_types = Vec::new();
-                for arg in args {
-                    arg_types.push(self.analyze_expression(arg)?);
-                }
-
-                let type_info = self.lookup_type(&left_type, *line, *column)?;
-                match type_info.methods.get(callee.lexeme()) {
-                    Some(met_sym) => {
-                        if let Symbol::Method {
-                            is_static,
-                            param_types,
-                            return_type,
-                            ..
-                        } = met_sym
-                        {
-                            if !is_static {
-                                return Err(CompilerError::new(
-                                    &format!("{} ay hindi isang static na paraan", callee.lexeme()),
-                                    ErrorKind::Error,
-                                    callee.line(),
-                                    callee.column(),
-                                ));
-                            }
-
-                            Self::check_call(&arg_types, param_types, *line, *column)?;
-
-                            Ok(return_type.clone())
-                        } else {
-                            unreachable!("met_sym is not a MetSymbol");
-                        }
-                    }
-                    None => Err(CompilerError::new(
-                        &format!(
-                            "Walang method na `{}` ang `{}` na tipo",
-                            callee.lexeme(),
-                            &left_type
-                        ),
-                        ErrorKind::Error,
-                        *line,
-                        *column,
-                    )),
-                }
-            }
-            Expr::Struct {
-                name,
-                fields,
-                line,
-                column,
-                ..
-            } => {
-                let resolved_type = self.resolve_type(name, *line, *column)?;
-
-                let type_info = match self.type_table.get(&resolved_type.to_string()) {
-                    Some(t_info) => t_info.clone(),
-                    None => {
-                        return Err(CompilerError::new(
-                            &format!("Hindi rehistrado ang tipo na `{}`", &resolved_type),
-                            ErrorKind::Error,
-                            *line,
-                            *column,
-                        ));
-                    }
-                };
-
-                if fields.len() != type_info.fields.len() {
-                    return Err(CompilerError::new(
-                        &format!(
-                            "Hindi wastong bilang ng fields, ang {} ay may {} na bilang ng fields",
-                            &resolved_type,
-                            type_info.fields.len()
-                        ),
-                        ErrorKind::Error,
-                        *line,
-                        *column,
-                    ));
-                }
-
-                for (field_tok, field_expr) in fields {
-                    let field_name = field_tok.lexeme();
-                    let field_type = self.analyze_expression(field_expr)?;
-
-                    match type_info.fields.get(field_name) {
-                        Some(t) => {
-                            field_type.is_assignment_compatible(
-                                t,
-                                field_tok.line(),
-                                field_tok.column(),
-                            )?;
-                        }
-                        None => {
-                            return Err(CompilerError::new(
-                                &format!(
-                                    "Ang field na {} ay wala sa {}",
-                                    field_name, resolved_type
-                                ),
-                                ErrorKind::Error,
-                                field_tok.line(),
-                                field_tok.column(),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(resolved_type)
-            }
+            Expr::MemberAccess { .. } => self.analyze_member_access(expr),
+            Expr::ScopeResolution { .. } => self.analyze_scope_resolution(expr),
+            Expr::Struct { .. } => self.analyze_struct_expr(expr),
             Expr::Array {
                 elements,
                 line,
@@ -965,7 +748,303 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 Ok(TolType::USukat)
             }
-            _ => Ok(TolType::Wala),
+            Expr::StringLit { .. } => todo!(),
+        }
+    }
+
+    fn analyze_fncall(
+        &self,
+        fncall: &Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<TolType, CompilerError> {
+        if let Expr::FnCall { callee, args, .. } = fncall {
+            let mut arg_types: Vec<TolType> = args
+                .iter()
+                .map(|arg| self.analyze_expression(arg))
+                .collect::<Result<_, CompilerError>>()?;
+
+            let callee_symbol = match callee.as_ref() {
+                Expr::Identifier { token, .. } => {
+                    self.lookup_symbol(token.lexeme(), token.line(), token.column())
+                }
+                Expr::MemberAccess {
+                    left,
+                    member,
+                    line,
+                    column,
+                    ..
+                } => self.lookup_member_access(left, member, *line, *column),
+                Expr::ScopeResolution {
+                    left,
+                    field,
+                    line,
+                    column,
+                    ..
+                } => self.lookup_scope_resolution(left, field, *line, *column),
+                _ => Err(CompilerError::new(
+                    "Hindi ito pwedeng tawagin",
+                    ErrorKind::Error,
+                    line,
+                    column,
+                )),
+            }?;
+
+            match callee_symbol {
+                Symbol::Paraan {
+                    param_types,
+                    return_type,
+                    ..
+                } => {
+                    Self::check_call(&arg_types, param_types, line, column)?;
+
+                    Ok(return_type.clone())
+                }
+                Symbol::Method {
+                    param_types,
+                    return_type,
+                    ..
+                } => {
+                    if let Expr::MemberAccess { left, .. } = callee.as_ref() {
+                        arg_types.insert(0, self.analyze_expression(left)?);
+                    }
+                    Self::check_call(&arg_types, param_types, line, column)?;
+
+                    Ok(return_type.clone())
+                }
+                _ => Err(CompilerError::new(
+                    "Invalid ang tigatawag ng paraan",
+                    ErrorKind::Error,
+                    line,
+                    column,
+                )),
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn analyze_member_access(&self, expr: &Expr) -> Result<TolType, CompilerError> {
+        if let Expr::MemberAccess {
+            left,
+            member,
+            line,
+            column,
+            ..
+        } = expr
+        {
+            let sym = self.lookup_member_access(left, member, *line, *column)?;
+            match sym {
+                Symbol::Var { tol_type, .. } => Ok(tol_type.clone()),
+                Symbol::Paraan { return_type, .. } | Symbol::Method { return_type, .. } => {
+                    Ok(return_type.clone())
+                }
+                Symbol::Bagay { name } => Ok(TolType::Bagay(name.clone())),
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn analyze_struct_expr(&self, struct_expr: &Expr) -> Result<TolType, CompilerError> {
+        if let Expr::Struct {
+            callee,
+            fields,
+            line,
+            column,
+            ..
+        } = struct_expr
+        {
+            let resolved_fields: Vec<(Token, TolType)> = fields
+                .iter()
+                .map(|(tok, ex)| {
+                    let ex_type = self.analyze_expression(ex)?;
+                    Ok((tok.clone(), ex_type))
+                })
+                .collect::<Result<_, CompilerError>>()?;
+
+            let callee_symbol = match callee.as_ref() {
+                Expr::Identifier { token, .. } => {
+                    self.lookup_symbol(token.lexeme(), token.line(), token.column())
+                }
+                Expr::MemberAccess {
+                    left,
+                    member,
+                    line,
+                    column,
+                    ..
+                } => self.lookup_member_access(left, member, *line, *column),
+                Expr::ScopeResolution {
+                    left,
+                    field,
+                    line,
+                    column,
+                    ..
+                } => self.lookup_scope_resolution(left, field, *line, *column),
+                _ => Err(CompilerError::new(
+                    "Hindi ito pwede i-construct",
+                    ErrorKind::Error,
+                    *line,
+                    *column,
+                )),
+            }?;
+
+            let bagay_name: &String;
+            let members = match callee_symbol {
+                Symbol::Bagay { name } => {
+                    bagay_name = name;
+                    &self.type_table.get(name).unwrap().members
+                }
+                _ => {
+                    return Err(CompilerError::new(
+                        "Hindi pwede i-construct ang hindi bagay",
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    ));
+                }
+            };
+
+            for (field_tok, field_ty) in &resolved_fields {
+                let field_symbol = members.get(field_tok.lexeme()).ok_or(CompilerError::new(
+                    &format!(
+                        "Walang field na `{}` ang `{}`",
+                        field_tok.lexeme(),
+                        bagay_name
+                    ),
+                    ErrorKind::Error,
+                    field_tok.line(),
+                    field_tok.column(),
+                ))?;
+
+                match field_symbol {
+                    Symbol::Var { tol_type, .. } => {
+                        field_ty.is_assignment_compatible(
+                            tol_type,
+                            field_tok.line(),
+                            field_tok.column(),
+                        )?;
+                    }
+                    _ => {
+                        return Err(CompilerError::new(
+                            &format!("Hindi field ang `{}`", field_tok.lexeme()),
+                            ErrorKind::Error,
+                            field_tok.line(),
+                            field_tok.column(),
+                        ));
+                    }
+                }
+            }
+
+            Ok(TolType::Bagay(bagay_name.clone()))
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn analyze_scope_resolution(&self, expr: &Expr) -> Result<TolType, CompilerError> {
+        if let Expr::ScopeResolution {
+            left,
+            field,
+            line,
+            column,
+            ..
+        } = expr
+        {
+            let sym = self.lookup_scope_resolution(left, field, *line, *column)?;
+
+            match sym {
+                Symbol::Var { tol_type, .. } => Ok(tol_type.clone()),
+                Symbol::Paraan { return_type, .. } | Symbol::Method { return_type, .. } => {
+                    Ok(return_type.clone())
+                }
+                Symbol::Bagay { name } => Ok(TolType::Bagay(name.clone())),
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn lookup_member_access(
+        &self,
+        left: &Expr,
+        member: &Token,
+        line: usize,
+        column: usize,
+    ) -> Result<&Symbol, CompilerError> {
+        let left_type = self.analyze_expression(left)?;
+
+        let type_info = self
+            .type_table
+            .get(&left_type.to_string())
+            .ok_or(CompilerError::new(
+                &format!("Hindi nahanap ang tipong `{}` sa type table", left_type),
+                ErrorKind::Error,
+                line,
+                column,
+            ))?;
+
+        type_info
+            .members
+            .get(member.lexeme())
+            .ok_or(CompilerError::new(
+                &format!(
+                    "Walang miyembro na `{}` ang `{}`",
+                    member.lexeme(),
+                    left_type
+                ),
+                ErrorKind::Error,
+                line,
+                column,
+            ))
+    }
+
+    fn lookup_scope_resolution(
+        &self,
+        left: &Expr,
+        field: &Token,
+        line: usize,
+        column: usize,
+    ) -> Result<&Symbol, CompilerError> {
+        match left {
+            Expr::Identifier { token, .. } => {
+                let type_info = self
+                    .type_table
+                    .get(token.lexeme())
+                    .ok_or(CompilerError::new(
+                        &format!("Hindi narehistro ang `{}`", token.lexeme()),
+                        ErrorKind::Error,
+                        line,
+                        column,
+                    ))?;
+
+                type_info
+                    .static_members
+                    .get(field.lexeme())
+                    .ok_or(CompilerError::new(
+                        &format!(
+                            "Walang static na miyembro na `{}` ang `{}`",
+                            field.lexeme(),
+                            token.lexeme()
+                        ),
+                        ErrorKind::Error,
+                        field.line(),
+                        field.column(),
+                    ))
+            }
+            Expr::ScopeResolution {
+                left,
+                field,
+                line,
+                column,
+                ..
+            } => self.lookup_scope_resolution(left, field, *line, *column),
+            _ => Err(CompilerError::new(
+                "Hindi valid ang nasa kaliwa ng `::",
+                ErrorKind::Error,
+                line,
+                column,
+            )),
         }
     }
 
@@ -975,6 +1054,7 @@ impl<'a> SemanticAnalyzer<'a> {
         line: usize,
         column: usize,
     ) -> Result<(), CompilerError> {
+        println!("{:?}\n{:?}", args, params);
         if args.len() != params.len() {
             return Err(CompilerError::new(
                 "Ang bilang ng argumento ay hindi pareho sa parameter",
@@ -1073,21 +1153,21 @@ impl<'a> SemanticAnalyzer<'a> {
         )
     }
 
-    fn lookup_type(
-        &self,
-        type_: &TolType,
-        line: usize,
-        column: usize,
-    ) -> Result<&TypeInfo, CompilerError> {
-        self.type_table
-            .get(&type_.to_string())
-            .ok_or(CompilerError::new(
-                &format!("Ang `{}` ay hindi naideklarang tipo", type_),
-                ErrorKind::Error,
-                line,
-                column,
-            ))
-    }
+    // fn lookup_type(
+    //     &self,
+    //     type_: &TolType,
+    //     line: usize,
+    //     column: usize,
+    // ) -> Result<&TypeInfo, CompilerError> {
+    //     self.type_table
+    //         .get(&type_.to_string())
+    //         .ok_or(CompilerError::new(
+    //             &format!("Ang `{}` ay hindi naideklarang tipo", type_),
+    //             ErrorKind::Error,
+    //             line,
+    //             column,
+    //         ))
+    // }
 
     fn ensure_mutability(&self, lvalue: &Expr) -> Result<(), CompilerError> {
         // WARN: Only works for identifiers for now

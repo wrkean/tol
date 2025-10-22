@@ -542,14 +542,13 @@ impl<'a> Parser<'a> {
         let mut left = self.nud()?;
 
         while !self.is_at_end() {
-            let previous_tok = self.peek_previous().clone();
             let op = self.peek().clone();
             if self.get_op_info(&op).0 <= precedence {
                 break;
             }
 
             self.advance();
-            left = self.led(&op, left, &previous_tok)?;
+            left = self.led(&op, left)?;
         }
 
         Ok(left)
@@ -592,12 +591,6 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::Identifier => {
-                if self.peek().kind() == &TokenKind::LeftParen {
-                    return self.parse_fncall(&current_tok);
-                } else if self.peek().kind() == &TokenKind::Bang {
-                    return self.parse_struct_expr(&current_tok);
-                }
-
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::Identifier {
@@ -615,16 +608,14 @@ impl<'a> Parser<'a> {
                 Ok(expr)
             }
             TokenKind::At => {
-                let callee = self.advance().clone();
+                let name = self.advance().clone();
 
-                let fncall = self.parse_fncall(&callee)?;
+                self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
+                let args = self.parse_args(name.line(), name.column())?;
 
                 let id = self.ast_id;
                 self.ast_id += 1;
-                Ok(Expr::MagicFnCall {
-                    fncall: Box::new(fncall),
-                    id,
-                })
+                Ok(Expr::MagicFnCall { name, args, id })
             }
             TokenKind::LeftBracket => {
                 let mut elements = Vec::new();
@@ -653,12 +644,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn led(
-        &mut self,
-        op: &Token,
-        left: Expr,
-        tok_before_op: &Token,
-    ) -> Result<Expr, CompilerError> {
+    fn led(&mut self, op: &Token, left: Expr) -> Result<Expr, CompilerError> {
         let (precedence, associativity) = self.get_op_info(op);
 
         let precedence = match associativity {
@@ -671,41 +657,11 @@ impl<'a> Parser<'a> {
 
         match op.kind() {
             TokenKind::Dot => self.parse_member_access(left),
-            TokenKind::ColonColon => {
-                match right {
-                    Expr::Identifier { token, .. } => {
-                        let id = self.ast_id;
-                        self.ast_id += 1;
-                        Ok(Expr::StaticFieldAccess {
-                            left: tok_before_op.clone(),
-                            field: token,
-                            line: op.line(),
-                            column: op.column(),
-                            id,
-                        })
-                    }
-                    // TODO: StaticMethodCall
-                    Expr::FnCall { callee, args, .. } => {
-                        let id = self.ast_id;
-                        self.ast_id += 1;
-                        Ok(Expr::StaticMethodCall {
-                            left: TolType::UnknownIdentifier(tok_before_op.lexeme().to_string()),
-                            callee,
-                            args,
-                            line: op.line(),
-                            column: op.column(),
-                            id,
-                        })
-                    }
-                    _ => Err(CompilerError::new(
-                        "Ang nasa kanan ng `::` ay dapat pangalan o paraan",
-                        ErrorKind::Error,
-                        op.line(),
-                        op.column(),
-                    )),
-                }
-            }
+            TokenKind::LeftParen => self.parse_fncall(left, op.line(), op.column()),
+            TokenKind::Bang => self.parse_struct_expr(left, op.line(), op.column()),
+            TokenKind::ColonColon => self.parse_scope_resolution(left, op.line(), op.column()),
             TokenKind::DotDot => {
+                let right = self.parse_expression(precedence)?;
                 let start = Box::new(left);
                 let end = Box::new(right);
                 let id = self.ast_id;
@@ -719,6 +675,7 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::DotDotEqual => {
+                let right = self.parse_expression(precedence)?;
                 let start = Box::new(left);
                 let end = Box::new(right);
                 let id = self.ast_id;
@@ -732,6 +689,7 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::Equal => {
+                let right = self.parse_expression(precedence)?;
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::Assign {
@@ -743,6 +701,7 @@ impl<'a> Parser<'a> {
                 })
             }
             _ => {
+                let right = self.parse_expression(precedence)?;
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::Binary {
@@ -765,6 +724,27 @@ impl<'a> Parser<'a> {
             member: member.clone(),
             line: member.line(),
             column: member.column(),
+            id,
+        })
+    }
+
+    fn parse_scope_resolution(
+        &mut self,
+        left: Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<Expr, CompilerError> {
+        let field = self
+            .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+            .clone();
+
+        let id = self.ast_id;
+        self.ast_id += 1;
+        Ok(Expr::ScopeResolution {
+            left: Box::new(left),
+            field,
+            line,
+            column,
             id,
         })
     }
@@ -807,8 +787,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_struct_expr(&mut self, struct_name: &Token) -> Result<Expr, CompilerError> {
-        self.consume(TokenKind::Bang, self.expect_err("`!`"))?;
+    fn parse_struct_expr(
+        &mut self,
+        callee: Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<Expr, CompilerError> {
         self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
 
         let mut fields = Vec::new();
@@ -830,24 +814,50 @@ impl<'a> Parser<'a> {
             fields.push((field_name, field_expr));
         }
 
-        self.advance();
+        if self.is_at_end() {
+            return Err(CompilerError::new(
+                "Ang `(` ay di naisarado",
+                ErrorKind::Error,
+                line,
+                column,
+            ));
+        } else {
+            self.consume(TokenKind::RightParen, self.expect_err("`)`"))?;
+        }
 
         let id = self.ast_id;
         self.ast_id += 1;
         Ok(Expr::Struct {
-            name: TolType::UnknownIdentifier(struct_name.lexeme().to_string()),
+            callee: Box::new(callee),
             fields,
-            line: struct_name.line(),
-            column: struct_name.column(),
+            line,
+            column,
             id,
         })
     }
 
-    fn parse_fncall(&mut self, callee: &Token) -> Result<Expr, CompilerError> {
-        self.advance(); // Consumes `(`
+    fn parse_fncall(
+        &mut self,
+        callee: Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<Expr, CompilerError> {
+        let args = self.parse_args(line, column)?;
 
+        let id = self.ast_id;
+        self.ast_id += 1;
+        Ok(Expr::FnCall {
+            callee: Box::new(callee),
+            args,
+            line,
+            column,
+            id,
+        })
+    }
+
+    fn parse_args(&mut self, line: usize, column: usize) -> Result<Vec<Expr>, CompilerError> {
         let mut args = Vec::new();
-        while self.peek().kind() != &TokenKind::RightParen {
+        while !self.is_at_end() && self.peek().kind() != &TokenKind::RightParen {
             args.push(self.parse_expression(0)?);
 
             if self.peek().kind() == &TokenKind::Comma {
@@ -857,15 +867,18 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.advance(); // Consumes the `)`
+        if self.is_at_end() {
+            return Err(CompilerError::new(
+                "Ang `(` ay di naisarado",
+                ErrorKind::Error,
+                line,
+                column,
+            ));
+        } else {
+            self.consume(TokenKind::RightParen, self.expect_err("`)`"))?;
+        }
 
-        let id = self.ast_id;
-        self.ast_id += 1;
-        Ok(Expr::FnCall {
-            callee: callee.to_owned(),
-            args,
-            id,
-        })
+        Ok(args)
     }
 
     fn synchronize(&mut self) {
@@ -899,6 +912,7 @@ impl<'a> Parser<'a> {
             TokenKind::Plus | TokenKind::Minus => (3, Left),
             TokenKind::Star | TokenKind::Slash => (4, Left),
             TokenKind::Dot | TokenKind::ColonColon => (5, Left),
+            TokenKind::LeftParen | TokenKind::Bang => (6, Left),
             _ => (0, Associativity::None),
         }
     }
@@ -950,13 +964,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_previous(&self) -> &Token {
-        if self.current <= self.tokens.len() {
-            &self.tokens[self.current - 1]
-        } else {
-            panic!("Unexpected end of input");
-        }
-    }
+    // fn peek_previous(&self) -> &Token {
+    //     if self.current <= self.tokens.len() {
+    //         &self.tokens[self.current - 1]
+    //     } else {
+    //         panic!("Unexpected end of input");
+    //     }
+    // }
 
     fn is_at_end(&self) -> bool {
         self.current >= self.tokens.len() - 1

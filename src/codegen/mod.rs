@@ -6,8 +6,6 @@ use crate::{
     toltype::TolType,
 };
 
-pub mod block_context;
-
 pub struct CodeGenerator<'a> {
     ast: &'a Stmt,
     output: String,
@@ -249,93 +247,49 @@ impl<'a> CodeGenerator<'a> {
                     self.gen_expression(right)
                 )
             }
-            Expr::FnCall { callee, args, .. } => {
-                let mut args_str_c = String::from("(");
-                for arg in args {
-                    args_str_c.push_str(&self.gen_expression(arg));
-                    if arg != args.last().unwrap() {
-                        args_str_c.push_str(", ");
-                    }
+            Expr::FnCall { callee, args, .. } => match callee.as_ref() {
+                Expr::Identifier { token, .. } => {
+                    format!("{}({})", token.lexeme(), self.gen_args(args))
                 }
-                args_str_c.push(')');
-
-                format!("{}{}", callee.lexeme(), args_str_c)
-            }
-            Expr::MagicFnCall { fncall, .. } => {
-                if let Expr::FnCall { callee, args, .. } = fncall.as_ref() {
-                    match callee.lexeme() {
-                        "print" => {
-                            let str_arg = self.gen_expression(&args[0]);
-                            format!("fputs({str_arg}, stdout)")
-                        }
-                        "println" => {
-                            let str_arg = self.gen_expression(&args[0]);
-                            format!("puts({str_arg})")
-                        }
-                        "alis" => {
-                            let int_arg = self.gen_expression(&args[0]);
-                            format!("exit({int_arg})")
-                        }
-                        _ => "".to_owned(),
+                Expr::MemberAccess { left, member, .. } => {
+                    let mut out = format!("{}({}", member.lexeme(), self.gen_expression(left));
+                    if !args.is_empty() {
+                        out.push_str(&format!(", {})", self.gen_args(args)));
+                    } else {
+                        out.push(')');
                     }
-                } else {
-                    panic!("MagicFnCall did not contain a function call!")
+                    out
+                }
+                Expr::ScopeResolution { field, .. } => {
+                    format!("{}({})", field.lexeme(), self.gen_args(args))
+                }
+                _ => unreachable!(),
+            },
+            Expr::MemberAccess { left, member, .. } => {
+                format!("{}.{}", self.gen_expression(left), member.lexeme())
+            }
+            Expr::ScopeResolution { field, .. } => field.lexeme().to_string(),
+            Expr::MagicFnCall { name, args, .. } => {
+                let args_c = self.gen_args(args);
+                match name.lexeme() {
+                    "println" => format!("fputs({}, stdout)", args_c),
+                    "print" => format!("puts({})", args_c),
+                    "alis" => format!("exit({})", args_c),
+                    _ => unreachable!(),
                 }
             }
-            Expr::FieldAccess { left, member, .. } => {
-                let left_expr_c = self.gen_expression(left);
-                let right_member_c = member.lexeme();
-
-                format!("({left_expr_c}.{right_member_c})")
-            }
-            Expr::MethodCall {
-                left, callee, args, ..
-            } => {
-                let mut args_str_c = String::from("(");
-                args_str_c.push_str(&self.gen_expression(left));
-                if args.len() == 1 {
-                    args_str_c.push(',');
-                }
-                for arg in args {
-                    args_str_c.push_str(&self.gen_expression(arg));
-                    if arg != args.last().unwrap() {
-                        args_str_c.push(',');
+            Expr::Struct { callee, fields, .. } => {
+                let callee_c = self.gen_expression(callee);
+                let mut fields_c = String::new();
+                for (i, (tok, ex)) in fields.iter().enumerate() {
+                    let field_c = format!(".{} = {}", tok.lexeme(), self.gen_expression(ex));
+                    fields_c.push_str(&field_c);
+                    if i != fields.len() - 1 {
+                        fields_c.push(',')
                     }
                 }
-                args_str_c.push(')');
 
-                format!("{}{}", callee.lexeme(), args_str_c)
-            }
-            Expr::StaticMethodCall { callee, args, .. } => {
-                let mut args_str_c = String::from("(");
-                for arg in args {
-                    args_str_c.push_str(&self.gen_expression(arg));
-                    if arg != args.last().unwrap() {
-                        args_str_c.push_str(", ");
-                    }
-                }
-                args_str_c.push(')');
-
-                format!("{}{}", callee.lexeme(), args_str_c)
-            }
-            Expr::Struct { name, fields, .. } => {
-                let struct_name_c = name.as_c();
-                let mut struct_block_c = String::from("{");
-                for (i, (field_name, field_expr)) in fields.iter().enumerate() {
-                    struct_block_c.push_str(&format!(
-                        ".{}={}",
-                        field_name.lexeme(),
-                        self.gen_expression(field_expr)
-                    ));
-
-                    let is_last = i == fields.len() - 1;
-                    if !is_last {
-                        struct_block_c.push(',');
-                    }
-                }
-                struct_block_c.push('}');
-
-                format!("(struct {}){}", struct_name_c, struct_block_c)
+                format!("(struct {}){{ {} }}", callee_c, fields_c)
             }
             Expr::Array { elements, .. } => {
                 let mut array_c = String::from("{");
@@ -350,8 +304,21 @@ impl<'a> CodeGenerator<'a> {
 
                 array_c
             }
-            _ => String::from("Wala"),
+            Expr::RangeExclusive { .. } => unimplemented!(),
+            Expr::RangeInclusive { .. } => unimplemented!(),
         }
+    }
+
+    fn gen_args(&self, args: &[Expr]) -> String {
+        let mut out = String::new();
+        for (i, arg) in args.iter().enumerate() {
+            out.push_str(&self.gen_expression(arg));
+            if i != args.len() - 1 {
+                out.push(',');
+            }
+        }
+
+        out
     }
 
     fn gen_block(&self, block: &Stmt) -> String {

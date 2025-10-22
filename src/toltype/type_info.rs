@@ -5,16 +5,16 @@ use crate::{symbol::Symbol, toltype::TolType};
 #[derive(Debug, Clone)]
 pub struct TypeInfo {
     pub kind: TolType,
-    pub fields: HashMap<String, TolType>,
-    pub methods: HashMap<String, Symbol>,
+    pub members: HashMap<String, Symbol>,
+    pub static_members: HashMap<String, Symbol>,
 }
 
 impl TypeInfo {
     pub fn new(kind: TolType) -> Self {
         Self {
             kind,
-            fields: HashMap::new(),
-            methods: HashMap::new(),
+            members: HashMap::new(),
+            static_members: HashMap::new(),
         }
     }
 }

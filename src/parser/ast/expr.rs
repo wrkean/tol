@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{lexer::token::Token, toltype::TolType};
+use crate::lexer::token::Token;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
@@ -38,12 +38,15 @@ pub enum Expr {
         id: usize,
     },
     FnCall {
-        callee: Token,
+        callee: Box<Expr>,
         args: Vec<Expr>,
+        line: usize,
+        column: usize,
         id: usize,
     },
     MagicFnCall {
-        fncall: Box<Expr>,
+        name: Token,
+        args: Vec<Expr>,
         id: usize,
     },
     MemberAccess {
@@ -53,31 +56,15 @@ pub enum Expr {
         column: usize,
         id: usize,
     },
-    StaticFieldAccess {
-        left: Token,
+    ScopeResolution {
+        left: Box<Expr>,
         field: Token,
         line: usize,
         column: usize,
         id: usize,
     },
-    MethodCall {
-        left: Box<Expr>,
-        callee: Token,
-        args: Vec<Expr>,
-        line: usize,
-        column: usize,
-        id: usize,
-    },
-    StaticMethodCall {
-        left: TolType,
-        callee: Token,
-        args: Vec<Expr>,
-        line: usize,
-        column: usize,
-        id: usize,
-    },
     Struct {
-        name: TolType,
+        callee: Box<Expr>,
         fields: Vec<(Token, Expr)>,
         line: usize,
         column: usize,
@@ -125,7 +112,7 @@ impl Expr {
     pub fn is_lvalue(&self) -> bool {
         matches!(
             self,
-            Self::Identifier { .. } | Self::MemberAccess { .. } | Self::StaticFieldAccess { .. }
+            Self::Identifier { .. } | Self::MemberAccess { .. } | Self::ScopeResolution { .. }
         )
     }
 }
