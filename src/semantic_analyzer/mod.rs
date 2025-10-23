@@ -200,7 +200,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
+    pub fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
         let expr_type = self.analyze_expression(expr)?;
 
         let inferred_type = self.resolve_expr_type(expr_type);
@@ -593,7 +593,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn analyze_expression(&self, expr: &Expr) -> Result<TolType, CompilerError> {
+    pub fn analyze_expression(&self, expr: &Expr) -> Result<TolType, CompilerError> {
         match expr {
             Expr::IntLit { .. } => Ok(TolType::UnsizedInt),
             Expr::FloatLit { .. } => Ok(TolType::UnsizedFloat),
@@ -747,6 +747,54 @@ impl<'a> SemanticAnalyzer<'a> {
                 };
 
                 Ok(TolType::USukat)
+            }
+            Expr::AddressOf {
+                of, line, column, ..
+            } => {
+                if !of.is_lvalue() {
+                    return Err(CompilerError::new(
+                        "Hindi pwedeng rvalue ang nasa kanan ng `&`",
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )
+                        .add_note("Ang rvalue ay tumutukoy sa mga expresyon na makikita mo sa kanan ng assignment (`=`) pero hindi mo makikita sa kaliwa")
+                        .add_note("Ang halimbawa nito ay mga integer na literal (41, 67) o mga pagtawag ng paraan (tawag())"));
+                }
+
+                let right_type = self.analyze_expression(of)?;
+
+                Ok(TolType::Pointer(Box::new(right_type)))
+            }
+            Expr::Deref {
+                right,
+                line,
+                column,
+            } => {
+                if !right.is_lvalue() {
+                    return Err(CompilerError::new(
+                        "Hindi pwedeng rvalue ang nasa kanan ng `*`",
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )
+                        .add_note("Ang rvalue ay tumutukoy sa mga expresyon na makikita mo sa kanan ng assignment (`=`) pero hindi mo makikita sa kaliwa")
+                        .add_note("Ang halimbawa nito ay mga integer na literal (41, 67) o mga pagtawag ng paraan (tawag())"));
+                }
+                let right_type = self.analyze_expression(right)?;
+
+                match &right_type {
+                    TolType::Pointer(t) => Ok(t.as_ref().clone()),
+                    _ => Err(CompilerError::new(
+                        &format!(
+                            "Ang nasa kanan ng `*` ay hindi isang pointer, kundi ito ay `{}`",
+                            right_type
+                        ),
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )),
+                }
             }
             Expr::StringLit { .. } => todo!(),
         }
@@ -1054,7 +1102,7 @@ impl<'a> SemanticAnalyzer<'a> {
         line: usize,
         column: usize,
     ) -> Result<(), CompilerError> {
-        println!("{:?}\n{:?}", args, params);
+        // println!("{:?}\n{:?}", args, params);
         if args.len() != params.len() {
             return Err(CompilerError::new(
                 "Ang bilang ng argumento ay hindi pareho sa parameter",

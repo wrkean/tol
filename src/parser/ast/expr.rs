@@ -90,6 +90,16 @@ pub enum Expr {
         column: usize,
         id: usize,
     },
+    AddressOf {
+        of: Box<Expr>,
+        line: usize,
+        column: usize,
+    },
+    Deref {
+        right: Box<Expr>,
+        line: usize,
+        column: usize,
+    },
 }
 
 impl fmt::Display for Expr {
@@ -112,7 +122,10 @@ impl Expr {
     pub fn is_lvalue(&self) -> bool {
         matches!(
             self,
-            Self::Identifier { .. } | Self::MemberAccess { .. } | Self::ScopeResolution { .. }
+            Self::Identifier { .. }
+                | Self::MemberAccess { .. }
+                | Self::ScopeResolution { .. }
+                | Self::Deref { .. },
         )
     }
 }

@@ -42,6 +42,7 @@ pub enum TolType {
     Bagay(String),
     UnknownIdentifier(String),
     Array(Box<TolType>, Option<usize>),
+    Pointer(Box<TolType>),
 
     // Special
     AkoType,
@@ -111,8 +112,8 @@ impl TolType {
                     _ => Ok(()),
                 }
             }
+            (Pointer(t1), Pointer(t2)) => t1.is_assignment_compatible(t2, line, column),
 
-            // Fallback: incompatible types
             _ => err(format!(
                 "Ang tipong `{}` ay hindi bagay sa tipong `{}`",
                 self, other
@@ -147,6 +148,7 @@ impl TolType {
                 }
                 t.as_c()
             }
+            TolType::Pointer(inner) => format!("{}*", inner.as_c()),
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
@@ -197,6 +199,7 @@ impl fmt::Display for TolType {
             TolType::Bagay(s) => write!(f, "{}", s),
             TolType::UnknownIdentifier(s) => write!(f, "{}", s),
             TolType::Array(t, _) => write!(f, "[{}]", t),
+            TolType::Pointer(inner) => write!(f, "Ptr[{}]", inner),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

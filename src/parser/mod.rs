@@ -532,6 +532,13 @@ impl<'a> Parser<'a> {
 
                 Ok(TolType::Array(Box::new(elem_type), len))
             }
+            "*" => {
+                self.advance();
+
+                let right_type = self.parse_type()?;
+
+                Ok(TolType::Pointer(Box::new(right_type)))
+            }
             _ => Ok(TolType::UnknownIdentifier(
                 self.advance().lexeme().to_string(),
             )),
@@ -557,6 +564,7 @@ impl<'a> Parser<'a> {
     fn nud(&mut self) -> Result<Expr, CompilerError> {
         let current_tok = self.advance().clone();
 
+        // TODO: Add precedence for unary ops later
         match current_tok.kind() {
             TokenKind::IntLit => {
                 let id = self.ast_id;
@@ -616,6 +624,24 @@ impl<'a> Parser<'a> {
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::MagicFnCall { name, args, id })
+            }
+            TokenKind::Amper => {
+                let right = self.parse_expression(0)?;
+
+                Ok(Expr::AddressOf {
+                    of: Box::new(right),
+                    line: current_tok.line(),
+                    column: current_tok.column(),
+                })
+            }
+            TokenKind::Star => {
+                let right = self.parse_expression(0)?;
+
+                Ok(Expr::Deref {
+                    right: Box::new(right),
+                    line: current_tok.line(),
+                    column: current_tok.column(),
+                })
             }
             TokenKind::LeftBracket => {
                 let mut elements = Vec::new();

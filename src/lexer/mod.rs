@@ -90,7 +90,7 @@ impl<'a> Lexer<'a> {
             ';' => self.add_token(TokenKind::SemiColon, None),
             ',' => self.add_token(TokenKind::Comma, None),
             '@' => self.add_token(TokenKind::At, None),
-            '?' => self.add_token(TokenKind::Question, None),
+            '&' => self.add_token(TokenKind::Amper, None),
             '.' => {
                 if self.match_char('.') {
                     if self.match_char('=') {

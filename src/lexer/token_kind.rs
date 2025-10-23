@@ -42,8 +42,9 @@ pub enum TokenKind {
     Slash,
     Percent,
     At,
-    Question,
+    // Question,
     Bang,
+    Amper,
 
     // Assignment operators
     Equal,

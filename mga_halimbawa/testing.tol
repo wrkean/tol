@@ -1,0 +1,52 @@
+bagay Tao {
+    edad: i32,
+    tuig: u32,
+}
+
+itupad Tao {
+    paraan bago(edad: i32, tuig: u32) Tao {
+        ibalik Tao!(edad: edad, tuig: tuig)
+    }
+
+    paraan get_tuig(ako) u32 {
+        ako.tuig
+    }
+}
+
+bagay Hayop {
+    edad: u8,
+}
+
+itupad i32 {
+    paraan idagdag_sa(ako, iba: i32) i32 {
+        ibalik ako + iba
+    }
+
+    paraan wala_lang() i32 {
+        ibalik 42
+    }
+}
+
+paraan una() {
+    ang tao = Tao::bago(8, 10)
+    ang edad = tao.edad
+    ang tuig = tao.get_tuig()
+
+    ang dagdag = 5
+    ang resulta = dagdag.idagdag_sa(1)
+    ang res = i32::wala_lang() - 42
+
+    ang array = [[1, 2, 3]]
+
+    ang ptr = &array
+
+    sa 0..=12 => i {
+        i;
+    }
+
+    ang hello = b"Hello world"
+
+    @print(hello)
+    @println(b"Kumusta mundo")
+    @alis(0)
+}

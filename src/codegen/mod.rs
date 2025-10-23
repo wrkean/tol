@@ -304,6 +304,8 @@ impl<'a> CodeGenerator<'a> {
 
                 array_c
             }
+            Expr::AddressOf { of, .. } => format!("(&{})", self.gen_expression(of)),
+            Expr::Deref { right, .. } => format!("(*{})", self.gen_expression(right)),
             Expr::RangeExclusive { .. } => unimplemented!(),
             Expr::RangeInclusive { .. } => unimplemented!(),
         }
