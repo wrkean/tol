@@ -321,20 +321,16 @@ impl<'a> CodeGenerator<'a> {
             Expr::Array { elements, id, .. } => {
                 let array_type = self.get_inferred_type(*id);
 
-                let mut elements_c = String::from("{");
-                for (i, elem) in elements.iter().enumerate() {
-                    elements_c.push_str(&self.gen_expression(elem, None));
-                    if i != elements.len() - 1 {
-                        elements_c.push(',');
-                    }
-                }
-                elements_c.push('}');
-
+                let mut should_pad = false; // Whether to pad the generated initializer list with zeroes or not
                 let len = match left_type {
                     Some(t) => {
                         if let TolType::Array(_, l) = t {
                             match l {
-                                Some(l_) => *l_,
+                                Some(l_) => {
+                                    // Pad only if the length is provided in the declaration
+                                    should_pad = true;
+                                    *l_
+                                }
                                 None => elements.len(),
                             }
                         } else {
@@ -343,6 +339,24 @@ impl<'a> CodeGenerator<'a> {
                     }
                     None => elements.len(),
                 };
+
+                let mut elements_c = String::from("{");
+                for (i, elem) in elements.iter().enumerate() {
+                    elements_c.push_str(&self.gen_expression(elem, None));
+                    if i == elements.len() - 1 && should_pad {
+                        elements_c.push(',');
+                        let pads = len - i - 1;
+                        for j in 0..pads {
+                            elements_c.push('0');
+                            if j != pads - 1 {
+                                elements_c.push(',');
+                            }
+                        }
+                    } else if i != elements.len() - 1 {
+                        elements_c.push(',');
+                    }
+                }
+                elements_c.push('}');
 
                 if let TolType::Array(inner, _) = array_type {
                     format!(
