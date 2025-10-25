@@ -10,5 +10,5 @@ fn main() {
         process::exit(1);
     });
 
-    tol::compile(&source, &path_to_source);
+    tol::compile(source, path_to_source);
 }

@@ -388,7 +388,7 @@ impl<'a> CodeGenerator<'a> {
 
     fn include_custom_headers(&self) -> String {
         let mut includes = String::new();
-        includes.push_str("#include \"tol_helper.h\"\n");
+        includes.push_str("#include \"../tol_helper.h\"\n");
 
         includes
     }

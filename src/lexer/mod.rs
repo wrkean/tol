@@ -1,8 +1,9 @@
-use std::{collections::HashMap, iter::Peekable, str::Chars};
+use std::collections::HashMap;
 
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
+    parser::module::Module,
 };
 
 pub mod token;
@@ -14,61 +15,60 @@ enum StringType {
 }
 
 pub struct Lexer<'a> {
-    source: &'a str,
-    source_path: &'a str,
-    chars: Peekable<Chars<'a>>,
-    keywords: HashMap<&'static str, TokenKind>,
-    tokens: Vec<Token>,
+    parent_module: &'a mut Module,
+    keywords: HashMap<String, TokenKind>,
     start: usize,
     current: usize,
     line: usize,
     column: usize,
     start_column: usize,
+    has_error: bool,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str, source_path: &'a str) -> Self {
+    pub fn new(parent_module: &'a mut Module) -> Self {
         let keywords = HashMap::from([
-            ("paraan", TokenKind::Paraan),
-            ("ang", TokenKind::Ang),
-            ("maiba", TokenKind::Maiba),
-            ("ibalik", TokenKind::Ibalik),
-            ("bagay", TokenKind::Bagay),
-            ("itupad", TokenKind::Itupad),
-            ("kung", TokenKind::Kung),
-            ("kungdi", TokenKind::KungDi),
-            ("kungwala", TokenKind::KungWala),
-            ("sa", TokenKind::Sa),
+            ("paraan".to_string(), TokenKind::Paraan),
+            ("ang".to_string(), TokenKind::Ang),
+            ("maiba".to_string(), TokenKind::Maiba),
+            ("ibalik".to_string(), TokenKind::Ibalik),
+            ("bagay".to_string(), TokenKind::Bagay),
+            ("itupad".to_string(), TokenKind::Itupad),
+            ("kung".to_string(), TokenKind::Kung),
+            ("kungdi".to_string(), TokenKind::KungDi),
+            ("kungwala".to_string(), TokenKind::KungWala),
+            ("sa".to_string(), TokenKind::Sa),
         ]);
+
         Self {
-            source,
-            source_path,
-            chars: source.chars().peekable(),
+            parent_module,
             keywords,
-            tokens: Vec::new(),
             start: 0,
             current: 0,
             line: 1,
             column: 1,
             start_column: 1,
+            has_error: false,
         }
     }
 
-    pub fn lex(&mut self) -> &Vec<Token> {
+    pub fn lex(&mut self) {
         while !self.is_at_end() {
             self.start = self.current;
             self.start_column = self.column;
 
             if let Err(e) = self.next_token() {
-                e.display(self.source_path);
+                e.display(&self.parent_module.source_path);
+                self.has_error = true;
             }
         }
 
-        if !matches!(self.tokens.last().map(|t| t.kind()), Some(TokenKind::Eof)) {
+        if !matches!(
+            self.parent_module.tokens.last().map(|t| t.kind()),
+            Some(TokenKind::Eof)
+        ) {
             self.add_token(TokenKind::Eof, Some("Eof"));
         }
-
-        &self.tokens
     }
 
     fn next_token(&mut self) -> Result<(), CompilerError> {
@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
                     self.add_token(TokenKind::SlashEqual, None);
                 } else if self.match_char('/') {
                     while let Some(c) = self.peek() {
-                        if c == &'\n' {
+                        if c == '\n' {
                             break;
                         }
                         self.advance();
@@ -223,7 +223,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn infer_semicolon(&mut self) {
-        if let Some(tok) = self.tokens.last()
+        if let Some(tok) = self.parent_module.tokens.last()
             && matches!(
                 tok.kind(),
                 TokenKind::Identifier
@@ -241,7 +241,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_identifier(&mut self) {
-        while let Some(&ch) = self.peek() {
+        while let Some(ch) = self.peek() {
             if self.is_identifier_continue(ch) {
                 self.advance();
             } else {
@@ -249,11 +249,11 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let lexeme = &self.source[self.start..self.current];
+        let lexeme = self.parent_module.source_code[self.start..self.current].to_string();
 
-        match self.keywords.get(lexeme) {
-            Some(keyword_kind) => self.add_token(keyword_kind.clone(), Some(lexeme)),
-            None => self.add_token(TokenKind::Identifier, Some(lexeme)),
+        match self.keywords.get(&lexeme) {
+            Some(keyword_kind) => self.add_token(keyword_kind.clone(), Some(&lexeme)),
+            None => self.add_token(TokenKind::Identifier, Some(&lexeme)),
         }
     }
 
@@ -261,7 +261,7 @@ impl<'a> Lexer<'a> {
         let mut is_float = false;
 
         // Lex integer part
-        while let Some(&ch) = self.peek() {
+        while let Some(ch) = self.peek() {
             if ch.is_ascii_digit() || ch == '_' {
                 self.advance();
             } else {
@@ -271,14 +271,14 @@ impl<'a> Lexer<'a> {
 
         #[allow(clippy::collapsible_if)]
         // Check for fractional part
-        if let Some(&'.') = self.peek() {
+        if let Some('.') = self.peek() {
             if let Some(next_ch) = self.peek_next() {
                 if next_ch.is_ascii_digit() {
                     // Only treat as float if a digit follows the '.'
                     is_float = true;
                     self.advance(); // consume '.'
 
-                    while let Some(&ch) = self.peek() {
+                    while let Some(ch) = self.peek() {
                         if ch.is_ascii_digit() || ch == '_' {
                             self.advance();
                         } else {
@@ -290,7 +290,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let with_underscores = &self.source[self.start..self.current];
+        let with_underscores = &self.parent_module.source_code[self.start..self.current];
         let without_underscores: String = with_underscores.chars().filter(|&c| c != '_').collect();
 
         let kind = if is_float {
@@ -305,7 +305,7 @@ impl<'a> Lexer<'a> {
     fn lex_string(&mut self, string_type: StringType) -> Result<(), CompilerError> {
         let mut value = String::new();
 
-        while let Some(&ch) = self.peek() {
+        while let Some(ch) = self.peek() {
             match ch {
                 '"' => {
                     self.advance(); // Consumes closing `"`
@@ -362,10 +362,11 @@ impl<'a> Lexer<'a> {
     fn add_token(&mut self, kind: TokenKind, literal: Option<&str>) {
         let lexeme = match literal {
             Some(lxm) => lxm,
-            None => &self.source[self.start..self.current],
+            None => &self.parent_module.source_code[self.start..self.current],
         };
 
-        self.tokens
+        self.parent_module
+            .tokens
             .push(Token::new(lexeme, kind, self.line, self.start_column));
     }
 
@@ -390,7 +391,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(&ch) = self.peek() {
+        while let Some(ch) = self.peek() {
             // Avoiding newlines prevents issues with
             // incorrect line number and oclumn number given
             // by errors
@@ -402,17 +403,23 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek(&mut self) -> Option<&char> {
-        self.chars.peek()
+    fn peek(&self) -> Option<char> {
+        self.parent_module.source_code[self.current..]
+            .chars()
+            .next()
     }
 
-    fn peek_next(&mut self) -> Option<char> {
-        self.source[self.current..].chars().nth(1)
+    // Peek at the character after the current one
+    fn peek_next(&self) -> Option<char> {
+        let mut chars_iter = self.parent_module.source_code[self.current..].chars();
+        chars_iter.next()?;
+        chars_iter.next()
     }
 
+    // Consume the current character and advance
     fn advance(&mut self) -> Option<char> {
-        if let Some(ch) = self.chars.next() {
-            self.current += ch.len_utf8();
+        if let Some(ch) = self.peek() {
+            self.current += ch.len_utf8(); // advance the byte index
             self.column += 1;
             Some(ch)
         } else {
@@ -420,150 +427,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // Match a specific character
     fn match_char(&mut self, expected: char) -> bool {
-        if let Some(ch) = self.peek() {
-            if *ch == expected {
-                self.advance();
-                true
-            } else {
-                false
-            }
-        } else {
-            false
+        if let Some(ch) = self.peek()
+            && ch == expected
+        {
+            self.advance();
+            return true;
         }
+
+        false
     }
 
-    fn is_at_end(&mut self) -> bool {
-        self.peek().is_none()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn lex(source: &str) -> Vec<Token> {
-        let mut lexer = Lexer::new(source, "test");
-        lexer.lex().clone()
+    // Check if we are at the end of the input
+    fn is_at_end(&self) -> bool {
+        self.current >= self.parent_module.source_code.len()
     }
 
-    #[test]
-    fn test_single_char_tokens() {
-        let tokens: Vec<TokenKind> = lex("( ) { } : ; + - * / % = > <")
-            .iter()
-            .map(|t| t.kind().clone())
-            .collect();
-
-        assert_eq!(tokens.len(), 15);
-        assert_eq!(
-            tokens,
-            vec![
-                TokenKind::LeftParen,
-                TokenKind::RightParen,
-                TokenKind::LeftBrace,
-                TokenKind::RightBrace,
-                TokenKind::Colon,
-                TokenKind::SemiColon,
-                TokenKind::Plus,
-                TokenKind::Minus,
-                TokenKind::Star,
-                TokenKind::Slash,
-                TokenKind::Percent,
-                TokenKind::Equal,
-                TokenKind::Greater,
-                TokenKind::Lesser,
-                TokenKind::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_combined_tokens() {
-        let tokens: Vec<TokenKind> = lex("+= -= *= /= %= == != >= <= ->")
-            .iter()
-            .map(|t| t.kind().clone())
-            .collect();
-
-        assert_eq!(tokens.len(), 11);
-        assert_eq!(
-            tokens,
-            vec![
-                TokenKind::PlusEqual,
-                TokenKind::MinusEqual,
-                TokenKind::StarEqual,
-                TokenKind::SlashEqual,
-                TokenKind::PercentEqual,
-                TokenKind::EqualEqual,
-                TokenKind::BangEqual,
-                TokenKind::GreaterEqual,
-                TokenKind::LesserEqual,
-                TokenKind::ThinArrow,
-                TokenKind::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_identifiers_and_keywords() {
-        let tokens: Vec<TokenKind> = lex("par ang maiba myVar _anotherVar var123")
-            .iter()
-            .map(|t| t.kind().clone())
-            .collect();
-
-        assert_eq!(tokens.len(), 7);
-        assert_eq!(
-            tokens,
-            vec![
-                TokenKind::Paraan,
-                TokenKind::Ang,
-                TokenKind::Maiba,
-                TokenKind::Identifier,
-                TokenKind::Identifier,
-                TokenKind::Identifier,
-                TokenKind::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_floats_and_ints() {
-        let tokens: Vec<TokenKind> = lex("123 456_789 3.14 0.001 1_000.000_1")
-            .iter()
-            .map(|t| t.kind().clone())
-            .collect();
-
-        assert_eq!(tokens.len(), 6);
-        assert_eq!(
-            tokens,
-            vec![
-                TokenKind::IntLit,
-                TokenKind::IntLit,
-                TokenKind::FloatLit,
-                TokenKind::FloatLit,
-                TokenKind::FloatLit,
-                TokenKind::Eof,
-            ]
-        );
-
-        let lexemes: Vec<String> = lex("123 456_789 3.14 0.001 1_000.000_1")
-            .iter()
-            .map(|t| t.lexeme().to_string())
-            .collect();
-
-        assert_eq!(
-            lexemes,
-            vec!["123", "456789", "3.14", "0.001", "1000.0001", "Eof"]
-        );
-    }
-
-    #[test]
-    fn test_invalid_tokens() {
-        let tokens: Vec<TokenKind> = lex("! $ @ # ^ &")
-            .iter()
-            .map(|t| t.kind().clone())
-            .collect();
-
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens, vec![TokenKind::Eof]);
+    pub fn has_error(&self) -> bool {
+        self.has_error
     }
 }

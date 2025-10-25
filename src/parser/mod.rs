@@ -15,24 +15,24 @@ pub mod ast;
 pub mod module;
 
 pub struct Parser<'a> {
-    tokens: &'a Vec<Token>,
+    parent_module: &'a mut Module,
     current: usize,
-    source_path: &'a str,
     ast_id: usize,
+    has_error: bool,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a Vec<Token>, source_path: &'a str) -> Self {
+    pub fn new(parent_module: &'a mut Module) -> Self {
         Parser {
-            tokens,
+            parent_module,
             current: 0,
-            source_path,
             ast_id: 0,
+            has_error: false,
         }
     }
 
-    pub fn parse(&mut self) -> Module {
-        let mut statements = Vec::new();
+    pub fn parse(&mut self) {
+        let mut statements = std::mem::take(&mut self.parent_module.ast);
         while !self.is_at_end() {
             if self.peek().kind() == &TokenKind::Eof {
                 break;
@@ -42,13 +42,14 @@ impl<'a> Parser<'a> {
             match statement {
                 Ok(stmt) => statements.push(stmt),
                 Err(e) => {
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
+                    self.has_error = true;
                     self.synchronize();
                 }
             }
         }
 
-        Module::new(self.source_path.to_string(), statements)
+        self.parent_module.ast = statements;
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, CompilerError> {
@@ -172,7 +173,7 @@ impl<'a> Parser<'a> {
             match self.parse_statement() {
                 Ok(stmt) => statements.push(stmt),
                 Err(e) => {
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                     self.synchronize_until(&[TokenKind::RightBrace]);
                 }
             };
@@ -353,7 +354,7 @@ impl<'a> Parser<'a> {
             match self.parse_method() {
                 Ok(method) => methods.push(method),
                 Err(e) => {
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                     self.synchronize_until(&[TokenKind::RightBrace]);
                 }
             }
@@ -982,7 +983,7 @@ impl<'a> Parser<'a> {
         self.advance();
 
         while !self.is_at_end() {
-            let previous = &self.tokens[self.current - 1];
+            let previous = &self.parent_module.tokens[self.current - 1];
             if matches!(
                 previous.kind(),
                 TokenKind::SemiColon | TokenKind::RightBrace
@@ -1044,7 +1045,7 @@ impl<'a> Parser<'a> {
     fn advance(&mut self) -> &Token {
         if !self.is_at_end() {
             self.current += 1;
-            &self.tokens[self.current - 1]
+            &self.parent_module.tokens[self.current - 1]
         } else {
             panic!("Unexpected end of input")
         }
@@ -1082,7 +1083,7 @@ impl<'a> Parser<'a> {
 
     fn peek(&self) -> &Token {
         if !self.is_at_end() {
-            &self.tokens[self.current]
+            &self.parent_module.tokens[self.current]
         } else {
             panic!("Unexpected end of input");
         }
@@ -1097,7 +1098,11 @@ impl<'a> Parser<'a> {
     // }
 
     fn is_at_end(&self) -> bool {
-        self.current >= self.tokens.len() - 1
+        self.current >= self.parent_module.tokens.len() - 1
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.has_error
     }
 }
 

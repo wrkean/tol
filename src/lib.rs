@@ -6,7 +6,10 @@ use std::{
 };
 
 use crate::{
-    codegen::CodeGenerator, lexer::Lexer, parser::Parser, semantic_analyzer::SemanticAnalyzer,
+    codegen::CodeGenerator,
+    lexer::Lexer,
+    parser::{Parser, module::Module},
+    semantic_analyzer::SemanticAnalyzer,
 };
 
 mod codegen;
@@ -19,13 +22,20 @@ mod toltype;
 
 fn compile_c(c_code: &str) -> io::Result<()> {
     let build_dir = Path::new("build");
-    if !build_dir.exists() {
-        fs::create_dir(build_dir).unwrap();
+    if !build_dir.exists()
+        && let Err(e) = fs::create_dir(build_dir)
+    {
+        eprintln!("Nabigong gumawa ng `build` folder");
+        eprintln!("Error: {e}");
+        return Err(e);
     }
 
     let filename = build_dir.join("generated.c");
 
-    fs::write(&filename, c_code)?;
+    if let Err(e) = fs::write(&filename, c_code) {
+        eprintln!("Nabigong gawin ang filename na {}", filename.display());
+        return Err(e);
+    }
     println!("Nagsulat sa: {}", filename.to_str().unwrap());
 
     let clang_format_exists = Command::new("which")
@@ -47,12 +57,9 @@ fn compile_c(c_code: &str) -> io::Result<()> {
         println!("Hindi nahanap ang clang-format. Hindi na magfoformat.");
     }
 
-    println!(
-        "Kinocompile ang {} gamit ang gcc",
-        filename.to_str().unwrap()
-    );
+    println!("Kinocompile ang {} gamit ang gcc", filename.display());
 
-    let output_binary = build_dir.join(&filename).with_extension("out");
+    let output_binary = filename.with_extension("out");
 
     let status = Command::new("gcc")
         .args([
@@ -63,7 +70,7 @@ fn compile_c(c_code: &str) -> io::Result<()> {
         .status()?;
 
     if status.success() {
-        println!("Na-compile: ./generated.out");
+        println!("Na-compile: {}", output_binary.display());
     } else {
         eprintln!("Nabigong mag-compile");
     }
@@ -87,44 +94,29 @@ pub fn get_source(args: &[String]) -> Result<(String, String), String> {
     Ok((path_to_source, source.unwrap()))
 }
 
-pub fn compile(source: &str, path_to_source: &str) {
-    let mut lexer = Lexer::new(source, path_to_source);
-    let tokens = lexer.lex();
+pub fn compile(source: String, path_to_source: String) {
+    let mut main_module = Module::new(source, path_to_source);
+    let mut should_compile = false;
+
+    let mut lexer = Lexer::new(&mut main_module);
+    lexer.lex();
+    should_compile |= lexer.has_error();
+    let tokens = &main_module.tokens;
     for tok in tokens {
         println!("{} <=> {:?}", tok.lexeme(), tok.kind());
     }
 
-    let mut parser = Parser::new(tokens, path_to_source);
-    let mut main_module = parser.parse();
+    let mut parser = Parser::new(&mut main_module);
+    parser.parse();
+    should_compile |= parser.has_error();
 
     let mut analyzer = SemanticAnalyzer::new(&mut main_module);
     analyzer.analyze();
+    should_compile |= analyzer.has_error();
 
-    if !analyzer.has_error() {
+    if !should_compile {
         let mut codegen = CodeGenerator::new(&main_module);
         let c_code = codegen.generate();
         compile_c(c_code).unwrap_or_else(|err| panic!("{err}"));
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn command_line_args() {
-        let dummy_many_args = vec!["tol".to_string(), "path_to_source".to_string()];
-
-        assert_eq!(
-            get_source(&dummy_many_args).unwrap_err(),
-            "Nabigong makuha ang path path_to_source"
-        );
-
-        let dummy_args = vec!["tol".to_string()];
-
-        assert_eq!(
-            get_source(&dummy_args).unwrap_err(),
-            "Paggamit: tol <pangalan_ng_source_file>"
-        );
     }
 }

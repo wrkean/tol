@@ -76,14 +76,20 @@ impl<'a> SemanticAnalyzer<'a> {
             } = stmt
             {
                 self.analyze_bagay(bagay_identifier, fields)
-                    .unwrap_or_else(|e| e.display(&self.parent_module.source_path));
+                    .unwrap_or_else(|e| {
+                        self.has_error = true;
+                        e.display(&self.parent_module.source_path)
+                    });
             }
         }
 
         // Second pass: analyze everything else
         for stmt in &statements {
             if !matches!(stmt, Stmt::Bagay { .. }) {
-                self.analyze_stmt(stmt);
+                self.analyze_stmt(stmt).unwrap_or_else(|e| {
+                    e.display(&self.parent_module.source_path);
+                    self.has_error = true;
+                });
             }
         }
 
@@ -98,7 +104,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // println!("{:#?}", self.type_table);
     }
 
-    fn analyze_stmt(&mut self, stmt: &Stmt) {
+    fn analyze_stmt(&mut self, stmt: &Stmt) -> Result<(), CompilerError> {
         match stmt {
             Stmt::Ang {
                 ang_identifier,
@@ -108,12 +114,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 column,
                 id,
                 mutable,
-            } => self
-                .analyze_ang(*mutable, ang_identifier, ang_type, rhs, *line, *column, *id)
-                .unwrap_or_else(|e| {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }),
+            } => self.analyze_ang(*mutable, ang_identifier, ang_type, rhs, *line, *column, *id),
             Stmt::Par {
                 par_identifier,
                 params,
@@ -122,70 +123,37 @@ impl<'a> SemanticAnalyzer<'a> {
                 // line,
                 // column,
                 ..
-            } => self
-                .analyze_par(par_identifier, params, return_type, block)
-                .unwrap_or_else(|e| {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }),
+            } => self.analyze_par(par_identifier, params, return_type, block),
             Stmt::Ibalik {
                 rhs, line, column, ..
-            } => self.analyze_ibalik(rhs, line, column).unwrap_or_else(|e| {
-                self.has_error = true;
-                e.display(&self.parent_module.source_path);
-            }),
-            Stmt::ExprS { expr, .. } => {
-                if let Err(e) = self.analyze_expression(expr) {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }
-            }
+            } => self.analyze_ibalik(rhs, line, column),
+            Stmt::ExprS { expr, .. } => self.analyze_expression(expr).map(|_| ()),
             Stmt::Bagay {
                 bagay_identifier,
                 fields,
                 ..
-            } => self
-                .analyze_bagay(bagay_identifier, fields)
-                .unwrap_or_else(|e| {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }),
+            } => self.analyze_bagay(bagay_identifier, fields),
             Stmt::Itupad {
                 itupad_for,
                 itupad_block,
                 line,
                 column,
                 ..
-            } => {
-                if let Err(e) = self.analyze_itupad(itupad_for, itupad_block, *line, *column) {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }
-            }
-            Stmt::Kung { branches, .. } => self.analyze_kung(branches).unwrap_or_else(|e| {
-                self.has_error = true;
-                e.display(&self.parent_module.source_path);
-            }),
+            } => self.analyze_itupad(itupad_for, itupad_block, *line, *column),
+
+            Stmt::Kung { branches, .. } => self.analyze_kung(branches),
             Stmt::Sa {
                 iterator,
                 bind,
                 block,
                 id,
                 ..
-            } => self
-                .analyze_sa(iterator, bind, block, *id)
-                .unwrap_or_else(|e| {
-                    self.has_error = true;
-                    e.display(&self.parent_module.source_path);
-                }),
-            Stmt::Block { statements, .. } => self.analyze_block(statements).unwrap_or_else(|e| {
-                self.has_error = true;
-                e.display(&self.parent_module.source_path);
-            }),
+            } => self.analyze_sa(iterator, bind, block, *id),
+            Stmt::Block { statements, .. } => self.analyze_block(statements),
             // TODO: analyze ts
-            Stmt::ItupadBlock { .. } => {}
-            Stmt::Method { .. } => {}
-        };
+            Stmt::ItupadBlock { .. } => Ok(()),
+            Stmt::Method { .. } => Ok(()),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -336,7 +304,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         self.current_func_return_type = resolved_return.clone();
-        self.analyze_stmt(block);
+        self.analyze_stmt(block)?;
         self.exit_scope();
 
         Ok(())
@@ -587,7 +555,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
         self.current_func_return_type = return_type.clone();
         // println!("{:?}", self.symbol_table);
-        self.analyze_stmt(block);
+        self.analyze_stmt(block)?;
         self.exit_scope();
 
         Ok(symbol)
@@ -599,7 +567,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.analyze_expression(s)?;
             }
 
-            self.analyze_stmt(&branch.block);
+            self.analyze_stmt(&branch.block)?;
         }
 
         Ok(())
@@ -624,7 +592,7 @@ impl<'a> SemanticAnalyzer<'a> {
         if !self.declare_symbol(bind.lexeme(), bind_symbol) {
             return Err(self.declared_in_scope_err(bind));
         }
-        self.analyze_stmt(block);
+        self.analyze_stmt(block)?;
         self.exit_scope();
 
         Ok(())
@@ -634,7 +602,7 @@ impl<'a> SemanticAnalyzer<'a> {
         self.enter_scope();
 
         for statement in statements {
-            self.analyze_stmt(statement);
+            self.analyze_stmt(statement)?;
         }
 
         self.exit_scope();
