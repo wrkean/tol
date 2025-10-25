@@ -19,6 +19,7 @@ pub struct SemanticAnalyzer<'a> {
     has_error: bool,
     current_func_return_type: TolType,
     inferred_types: HashMap<usize, TolType>,
+    declared_array_types: Vec<String>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -31,13 +32,54 @@ impl<'a> SemanticAnalyzer<'a> {
             has_error: false,
             current_func_return_type: TolType::Unknown,
             inferred_types: HashMap::new(),
+            declared_array_types: Vec::new(),
         };
 
         // Declare magic functions first
         new_analyzer.declare_magic_funcs();
+
+        // Declare types
         new_analyzer.declare_primitive_types();
 
         new_analyzer
+    }
+
+    fn declare_primitive_types(&mut self) {
+        // Signed integers
+        self.type_table
+            .insert("i8".to_string(), TypeInfo::new(TolType::I8));
+        self.type_table
+            .insert("i16".to_string(), TypeInfo::new(TolType::I16));
+        self.type_table
+            .insert("i32".to_string(), TypeInfo::new(TolType::I32));
+        self.type_table
+            .insert("i64".to_string(), TypeInfo::new(TolType::I64));
+        self.type_table
+            .insert("isukat".to_string(), TypeInfo::new(TolType::ISukat));
+
+        // Unsigned integers
+        self.type_table
+            .insert("u8".to_string(), TypeInfo::new(TolType::U8));
+        self.type_table
+            .insert("u16".to_string(), TypeInfo::new(TolType::U16));
+        self.type_table
+            .insert("u32".to_string(), TypeInfo::new(TolType::U32));
+        self.type_table
+            .insert("u64".to_string(), TypeInfo::new(TolType::U64));
+        self.type_table
+            .insert("usukat".to_string(), TypeInfo::new(TolType::USukat));
+
+        // Floating-point
+        self.type_table
+            .insert("lutang".to_string(), TypeInfo::new(TolType::Lutang));
+        self.type_table
+            .insert("dobletang".to_string(), TypeInfo::new(TolType::DobleTang));
+
+        // Others
+        self.type_table
+            .insert("bool".to_string(), TypeInfo::new(TolType::Bool));
+        self.type_table
+            .insert("kar".to_string(), TypeInfo::new(TolType::Kar));
     }
 
     pub fn analyze(&mut self) {
@@ -71,6 +113,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // }
 
         // println!("{:?}", self.type_table.keys());
+        println!("{:#?}", self.type_table);
     }
 
     fn analyze_stmt(&mut self, stmt: &Stmt) {
@@ -183,6 +226,8 @@ impl<'a> SemanticAnalyzer<'a> {
             _ => self.resolve_type(ang_type, line, column)?,
         };
 
+        self.declare_array_types(&ang_type);
+
         let rhs_type = self.analyze_expression(rhs)?;
         // println!("{:?}, {:?}", rhs_type, ang_type);
         rhs_type.is_assignment_compatible(&ang_type, line, column)?;
@@ -198,6 +243,26 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         Ok(())
+    }
+
+    fn declare_array_types(&mut self, array_type: &TolType) {
+        if let TolType::Array(inner, _) = array_type {
+            // Step 1: recurse on inner arrays first
+            self.declare_array_types(inner);
+
+            // Step 2: get the element type (inner type) C name
+            let inner_c = inner.as_c(); // e.g., "int32_t" or "TOL_Array_int32_t"
+            let array_c = format!("TOL_Array_{}", inner_c);
+
+            // Step 3: store this array type if not already declared
+            if !self.declared_array_types.contains(&array_c) {
+                self.declared_array_types.push(array_c);
+            }
+        }
+    }
+
+    pub fn get_declared_array_types(&self) -> &Vec<String> {
+        &self.declared_array_types
     }
 
     pub fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
@@ -593,7 +658,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    pub fn analyze_expression(&self, expr: &Expr) -> Result<TolType, CompilerError> {
+    pub fn analyze_expression(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
         match expr {
             Expr::IntLit { .. } => Ok(TolType::UnsizedInt),
             Expr::FloatLit { .. } => Ok(TolType::UnsizedFloat),
@@ -695,7 +760,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 elements,
                 line,
                 column,
-                ..
+                id,
             } => {
                 let assumed_element_type = self.analyze_expression(&elements[0])?;
 
@@ -710,10 +775,12 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
 
-                Ok(TolType::Array(
-                    Box::new(assumed_element_type),
-                    Some(elements.len()),
-                ))
+                let resulting_type =
+                    TolType::Array(Box::new(assumed_element_type), Some(elements.len()));
+
+                self.inferred_types.insert(*id, resulting_type.clone());
+
+                Ok(resulting_type)
             }
             Expr::RangeExclusive {
                 start,
@@ -801,7 +868,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn analyze_fncall(
-        &self,
+        &mut self,
         fncall: &Expr,
         line: usize,
         column: usize,
@@ -811,6 +878,10 @@ impl<'a> SemanticAnalyzer<'a> {
                 .iter()
                 .map(|arg| self.analyze_expression(arg))
                 .collect::<Result<_, CompilerError>>()?;
+            if let Expr::MemberAccess { left, .. } = callee.as_ref() {
+                let left_type = self.analyze_expression(left)?;
+                arg_types.insert(0, left_type);
+            }
 
             let callee_symbol = match callee.as_ref() {
                 Expr::Identifier { token, .. } => {
@@ -853,9 +924,6 @@ impl<'a> SemanticAnalyzer<'a> {
                     return_type,
                     ..
                 } => {
-                    if let Expr::MemberAccess { left, .. } = callee.as_ref() {
-                        arg_types.insert(0, self.analyze_expression(left)?);
-                    }
                     Self::check_call(&arg_types, param_types, line, column)?;
 
                     Ok(return_type.clone())
@@ -872,7 +940,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
     }
 
-    fn analyze_member_access(&self, expr: &Expr) -> Result<TolType, CompilerError> {
+    fn analyze_member_access(&mut self, expr: &Expr) -> Result<TolType, CompilerError> {
         if let Expr::MemberAccess {
             left,
             member,
@@ -894,7 +962,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
     }
 
-    fn analyze_struct_expr(&self, struct_expr: &Expr) -> Result<TolType, CompilerError> {
+    fn analyze_struct_expr(&mut self, struct_expr: &Expr) -> Result<TolType, CompilerError> {
         if let Expr::Struct {
             callee,
             fields,
@@ -937,11 +1005,11 @@ impl<'a> SemanticAnalyzer<'a> {
                 )),
             }?;
 
-            let bagay_name: &String;
-            let members = match callee_symbol {
+            let bagay_name: String;
+            let members = match callee_symbol.clone() {
                 Symbol::Bagay { name } => {
-                    bagay_name = name;
-                    &self.type_table.get(name).unwrap().members
+                    bagay_name = name.clone();
+                    &self.type_table.get(&name).unwrap().members
                 }
                 _ => {
                     return Err(CompilerError::new(
@@ -1014,7 +1082,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn lookup_member_access(
-        &self,
+        &mut self,
         left: &Expr,
         member: &Token,
         line: usize,
@@ -1150,11 +1218,6 @@ impl<'a> SemanticAnalyzer<'a> {
         for (name, sym) in magic_symbols {
             self.declare_symbol(name, sym);
         }
-    }
-
-    fn declare_primitive_types(&mut self) {
-        self.type_table
-            .insert("i32".to_string(), TypeInfo::new(TolType::I32));
     }
 
     fn lookup_symbol(

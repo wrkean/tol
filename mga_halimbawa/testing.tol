@@ -37,6 +37,7 @@ paraan una() {
     ang res = i32::wala_lang() - 42
 
     ang array = [[1, 2, 3]]
+    ang another_arr: [5]i32 = [2];
 
     ang ptr = &array
 
@@ -44,9 +45,9 @@ paraan una() {
         i;
     }
 
-    ang hello = b"Hello world"
+    // ang hello = b"Hello world"
 
-    @print(hello)
-    @println(b"Kumusta mundo")
+    // @print(hello)
+    // @println(b"Kumusta mundo")
     @alis(0)
 }

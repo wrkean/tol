@@ -125,7 +125,7 @@ impl TolType {
         match self {
             TolType::I8 => "int8_t".to_string(),
             TolType::I16 => "int16_t".to_string(),
-            TolType::I32 => "int32_t".to_string(),
+            TolType::I32 | TolType::UnsizedInt => "int32_t".to_string(),
             TolType::I64 => "int64_t".to_string(),
             TolType::ISukat => "ptrdiff_t".to_string(),
             TolType::U8 => "uint8_t".to_string(),
@@ -141,13 +141,7 @@ impl TolType {
             // TolType::Sinulid => "char*".to_string(),
             TolType::Bagay(s) => s.to_string(),
             TolType::UnknownIdentifier(s) => s.to_string(),
-            TolType::Array(inner, _) => {
-                let mut t = inner.as_ref();
-                while let TolType::Array(next, _) = t {
-                    t = next.as_ref();
-                }
-                t.as_c()
-            }
+            TolType::Array(inner, _) => format!("TOL_Array_{}", inner.as_c()),
             TolType::Pointer(inner) => format!("{}*", inner.as_c()),
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't

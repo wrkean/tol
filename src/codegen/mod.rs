@@ -10,10 +10,15 @@ pub struct CodeGenerator<'a> {
     ast: &'a Stmt,
     output: String,
     inferred_types: &'a HashMap<usize, TolType>,
+    declared_types: &'a Vec<String>,
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(ast: &'a Stmt, inferred_types: &'a HashMap<usize, TolType>) -> Self {
+    pub fn new(
+        ast: &'a Stmt,
+        inferred_types: &'a HashMap<usize, TolType>,
+        declared_types: &'a Vec<String>,
+    ) -> Self {
         // Parents must exist first
         Self {
             ast,
@@ -22,12 +27,15 @@ impl<'a> CodeGenerator<'a> {
 #include<stdlib.h>\n",
             ),
             inferred_types,
+            declared_types,
         }
     }
 
     pub fn generate(&mut self) -> &String {
+        self.output.push_str(&self.include_custom_headers());
         if let Stmt::Program(statements) = self.ast {
-            self.output.push_str(&self.gen_statements(statements));
+            let statements = self.gen_statements(statements);
+            self.output.push_str(&statements);
         }
 
         // Call the main function defined by the user in C's main function
@@ -38,16 +46,27 @@ impl<'a> CodeGenerator<'a> {
         &self.output
     }
 
-    fn gen_statements(&self, statements: &[Stmt]) -> String {
+    fn gen_statements(&mut self, statements: &[Stmt]) -> String {
         let mut out = String::new();
         for stmt in statements {
-            out.push_str(&self.gen_statement(stmt));
+            if matches!(stmt, Stmt::Bagay { .. }) {
+                out.push_str(&self.gen_statement(stmt));
+            }
+        }
+
+        out.push('\n');
+        out.push_str(&self.declare_array_structs());
+
+        for stmt in statements {
+            if !matches!(stmt, Stmt::Bagay { .. }) {
+                out.push_str(&self.gen_statement(stmt));
+            }
         }
 
         out
     }
 
-    fn gen_statement(&self, stmt: &Stmt) -> String {
+    fn gen_statement(&mut self, stmt: &Stmt) -> String {
         match stmt {
             Stmt::Ang {
                 mutable,
@@ -63,8 +82,8 @@ impl<'a> CodeGenerator<'a> {
                     _ => ang_type,
                 };
                 let type_c = ang_type.as_c();
-                let id_c = format!("{}{}", ang_identifier.lexeme(), ang_type.array_suffix());
-                let rhs_c = self.gen_expression(rhs);
+                let id_c = ang_identifier.lexeme();
+                let rhs_c = self.gen_expression(rhs, Some(ang_type));
 
                 format!("{modifier_c}{type_c} {id_c} = {rhs_c};")
             }
@@ -87,10 +106,10 @@ impl<'a> CodeGenerator<'a> {
                 format!("{type_c} {id_c}{params_c}{block_c}")
             }
             Stmt::Ibalik { rhs, .. } => {
-                format!("return {};", self.gen_expression(rhs))
+                format!("return {};", self.gen_expression(rhs, None))
             }
             Stmt::ExprS { expr, .. } => {
-                format!("{};", self.gen_expression(expr))
+                format!("{};", self.gen_expression(expr, None))
             }
             Stmt::Bagay {
                 bagay_identifier,
@@ -126,13 +145,13 @@ impl<'a> CodeGenerator<'a> {
                     if i == 0 {
                         if_c.push_str(&format!(
                             "if ({}){}",
-                            self.gen_expression(branch.condition.as_ref().unwrap()),
+                            self.gen_expression(branch.condition.as_ref().unwrap(), None),
                             self.gen_block(&branch.block)
                         ));
                     } else if let Some(expr) = &branch.condition {
                         if_c.push_str(&format!(
                             "else if ({}){}",
-                            self.gen_expression(expr),
+                            self.gen_expression(expr, None),
                             self.gen_block(&branch.block)
                         ));
                     } else if branch.condition.is_none() {
@@ -152,8 +171,8 @@ impl<'a> CodeGenerator<'a> {
                 Expr::RangeExclusive { start, end, .. } => {
                     let bind_type = self.get_inferred_type(*id).as_c();
                     let bind_id_c = bind.lexeme();
-                    let start_c = self.gen_expression(start);
-                    let end_c = self.gen_expression(end);
+                    let start_c = self.gen_expression(start, None);
+                    let end_c = self.gen_expression(end, None);
                     let block_c = self.gen_block(block);
 
                     format!(
@@ -163,8 +182,8 @@ impl<'a> CodeGenerator<'a> {
                 Expr::RangeInclusive { start, end, .. } => {
                     let bind_type = self.get_inferred_type(*id).as_c();
                     let bind_id_c = bind.lexeme();
-                    let start_c = self.gen_expression(start);
-                    let end_c = self.gen_expression(end);
+                    let start_c = self.gen_expression(start, None);
+                    let end_c = self.gen_expression(end, None);
                     let block_c = self.gen_block(block);
 
                     format!(
@@ -182,7 +201,7 @@ impl<'a> CodeGenerator<'a> {
         }
     }
 
-    fn gen_method(&self, method: &Stmt, itupad_for: &TolType) -> String {
+    fn gen_method(&mut self, method: &Stmt, itupad_for: &TolType) -> String {
         if let Stmt::Method {
             met_identifier,
             params,
@@ -222,29 +241,36 @@ impl<'a> CodeGenerator<'a> {
         c_params
     }
 
-    fn gen_expression(&self, expr: &Expr) -> String {
+    fn gen_expression(&self, expr: &Expr, left_type: Option<&TolType>) -> String {
         match expr {
             Expr::IntLit { token, .. }
             | Expr::FloatLit { token, .. }
             | Expr::Identifier { token, .. } => token.lexeme().to_string(),
-            Expr::StringLit { token, .. } | Expr::ByteStringLit { token, .. } => {
-                format!("\"{}\"", token.lexeme())
+            Expr::ByteStringLit { token, .. } => {
+                format!(
+                    "(__TOL_Array_uint8_t){{
+.data = \"{}\",
+.len = {}}}",
+                    token.lexeme(),
+                    token.lexeme().len(),
+                )
             }
+            Expr::StringLit { .. } => todo!(),
             Expr::Binary {
                 op, left, right, ..
             } => {
                 format!(
                     "({} {} {})",
-                    self.gen_expression(left),
+                    self.gen_expression(left, None),
                     op.lexeme(),
-                    self.gen_expression(right)
+                    self.gen_expression(right, None)
                 )
             }
             Expr::Assign { left, right, .. } => {
                 format!(
                     "{} = {}",
-                    self.gen_expression(left),
-                    self.gen_expression(right)
+                    self.gen_expression(left, None),
+                    self.gen_expression(right, None)
                 )
             }
             Expr::FnCall { callee, args, .. } => match callee.as_ref() {
@@ -252,7 +278,8 @@ impl<'a> CodeGenerator<'a> {
                     format!("({}({}))", token.lexeme(), self.gen_args(args))
                 }
                 Expr::MemberAccess { left, member, .. } => {
-                    let mut out = format!("({}({}", member.lexeme(), self.gen_expression(left));
+                    let mut out =
+                        format!("({}({}", member.lexeme(), self.gen_expression(left, None));
                     if !args.is_empty() {
                         out.push_str(&format!(", {}))", self.gen_args(args)));
                     } else {
@@ -266,7 +293,7 @@ impl<'a> CodeGenerator<'a> {
                 _ => unreachable!(),
             },
             Expr::MemberAccess { left, member, .. } => {
-                format!("{}.{}", self.gen_expression(left), member.lexeme())
+                format!("{}.{}", self.gen_expression(left, None), member.lexeme())
             }
             Expr::ScopeResolution { field, .. } => field.lexeme().to_string(),
             Expr::MagicFnCall { name, args, .. } => {
@@ -279,10 +306,10 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
             Expr::Struct { callee, fields, .. } => {
-                let callee_c = self.gen_expression(callee);
+                let callee_c = self.gen_expression(callee, None);
                 let mut fields_c = String::new();
                 for (i, (tok, ex)) in fields.iter().enumerate() {
-                    let field_c = format!(".{} = {}", tok.lexeme(), self.gen_expression(ex));
+                    let field_c = format!(".{} = {}", tok.lexeme(), self.gen_expression(ex, None));
                     fields_c.push_str(&field_c);
                     if i != fields.len() - 1 {
                         fields_c.push(',')
@@ -291,30 +318,78 @@ impl<'a> CodeGenerator<'a> {
 
                 format!("(struct {}){{ {} }}", callee_c, fields_c)
             }
-            Expr::Array { elements, .. } => {
-                let mut array_c = String::from("{");
+            Expr::Array { elements, id, .. } => {
+                let array_type = self.get_inferred_type(*id);
 
-                for (i, element) in elements.iter().enumerate() {
-                    array_c.push_str(&self.gen_expression(element));
+                let mut elements_c = String::from("{");
+                for (i, elem) in elements.iter().enumerate() {
+                    elements_c.push_str(&self.gen_expression(elem, None));
                     if i != elements.len() - 1 {
-                        array_c.push_str(", ");
+                        elements_c.push(',');
                     }
                 }
-                array_c.push('}');
+                elements_c.push('}');
 
-                array_c
+                let len = match left_type {
+                    Some(t) => {
+                        if let TolType::Array(_, l) = t {
+                            match l {
+                                Some(l_) => *l_,
+                                None => elements.len(),
+                            }
+                        } else {
+                            elements.len()
+                        }
+                    }
+                    None => elements.len(),
+                };
+
+                if let TolType::Array(inner, _) = array_type {
+                    format!(
+                        "(TOL_Array_{}){{
+    .data = ({}[]){},
+    .len = {}
+}}",
+                        inner.as_c(),
+                        inner.as_c(),
+                        elements_c,
+                        len,
+                    )
+                } else {
+                    unreachable!()
+                }
             }
-            Expr::AddressOf { of, .. } => format!("(&{})", self.gen_expression(of)),
-            Expr::Deref { right, .. } => format!("(*{})", self.gen_expression(right)),
+            Expr::AddressOf { of, .. } => format!("(&{})", self.gen_expression(of, None)),
+            Expr::Deref { right, .. } => format!("(*{})", self.gen_expression(right, None)),
             Expr::RangeExclusive { .. } => unimplemented!(),
             Expr::RangeInclusive { .. } => unimplemented!(),
         }
     }
 
+    // Declare C struct representation of this language's arrays
+    fn declare_array_structs(&self) -> String {
+        let mut array_structs = String::new();
+        for declared_type in self.declared_types {
+            array_structs.push_str(&format!(
+                "DEFINE_TOL_ARRAY_STRUCT({})\n",
+                declared_type.strip_prefix("TOL_Array_").unwrap(),
+            ));
+        }
+
+        array_structs
+    }
+
+    fn include_custom_headers(&self) -> String {
+        let mut includes = String::new();
+        includes.push_str("#include \"tol_helper.h\"\n");
+
+        includes
+    }
+
     fn gen_args(&self, args: &[Expr]) -> String {
         let mut out = String::new();
         for (i, arg) in args.iter().enumerate() {
-            out.push_str(&self.gen_expression(arg));
+            out.push_str(&self.gen_expression(arg, None));
             if i != args.len() - 1 {
                 out.push(',');
             }
@@ -323,7 +398,7 @@ impl<'a> CodeGenerator<'a> {
         out
     }
 
-    fn gen_block(&self, block: &Stmt) -> String {
+    fn gen_block(&mut self, block: &Stmt) -> String {
         if let Stmt::Block { statements, .. } = block {
             let mut out = String::from("{");
             for statement in statements {
