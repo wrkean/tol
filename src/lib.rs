@@ -18,10 +18,15 @@ mod symbol;
 mod toltype;
 
 fn compile_c(c_code: &str) -> io::Result<()> {
-    let filename = "generated.c";
+    let build_dir = Path::new("build");
+    if !build_dir.exists() {
+        fs::create_dir(build_dir).unwrap();
+    }
 
-    fs::write(filename, c_code)?;
-    println!("Nagsulat sa: {filename}");
+    let filename = build_dir.join("generated.c");
+
+    fs::write(&filename, c_code)?;
+    println!("Nagsulat sa: {}", filename.to_str().unwrap());
 
     let clang_format_exists = Command::new("which")
         .arg("clang-format")
@@ -32,7 +37,7 @@ fn compile_c(c_code: &str) -> io::Result<()> {
     if clang_format_exists {
         println!("Finoformat ang C code...");
         let status = Command::new("clang-format")
-            .args(["-i", filename])
+            .args(["-i", filename.to_str().unwrap()])
             .status()?;
 
         if !status.success() {
@@ -42,12 +47,19 @@ fn compile_c(c_code: &str) -> io::Result<()> {
         println!("Hindi nahanap ang clang-format. Hindi na magfoformat.");
     }
 
-    println!("Kinocompile ang {filename} gamit ang gcc");
+    println!(
+        "Kinocompile ang {} gamit ang gcc",
+        filename.to_str().unwrap()
+    );
 
-    let output_binary = Path::new("generated").with_extension("out");
+    let output_binary = build_dir.join(&filename).with_extension("out");
 
     let status = Command::new("gcc")
-        .args([filename, "-o", output_binary.to_str().unwrap()])
+        .args([
+            filename.to_str().unwrap(),
+            "-o",
+            output_binary.to_str().unwrap(),
+        ])
         .status()?;
 
     if status.success() {
