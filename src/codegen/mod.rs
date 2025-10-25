@@ -85,7 +85,7 @@ impl<'a> CodeGenerator<'a> {
                 let id_c = ang_identifier.lexeme();
                 let rhs_c = self.gen_expression(rhs, Some(ang_type));
 
-                format!("{modifier_c}{type_c} {id_c} = {rhs_c};")
+                format!("{type_c} {modifier_c} {id_c} = {rhs_c};")
             }
             Stmt::Par {
                 par_identifier,
@@ -373,7 +373,10 @@ impl<'a> CodeGenerator<'a> {
                     unreachable!()
                 }
             }
-            Expr::AddressOf { of, .. } => format!("(&{})", self.gen_expression(of, None)),
+            // They are the same in C
+            Expr::AddressOf { of, .. } | Expr::MutableAddressOf { of, .. } => {
+                format!("(&{})", self.gen_expression(of, None))
+            }
             Expr::Deref { right, .. } => format!("(*{})", self.gen_expression(right, None)),
             Expr::RangeExclusive { .. } => unimplemented!(),
             Expr::RangeInclusive { .. } => unimplemented!(),

@@ -32,7 +32,10 @@ paraan una() {
     ang edad = tao.edad
     ang tuig = tao.get_tuig()
 
-    ang dagdag = 5
+    ang maiba numero = 1
+    numero = 2
+
+    ang dagdag = numero
     ang resulta = dagdag.idagdag_sa(1)
     ang res = i32::wala_lang() - 42
 

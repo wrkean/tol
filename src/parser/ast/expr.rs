@@ -94,11 +94,19 @@ pub enum Expr {
         of: Box<Expr>,
         line: usize,
         column: usize,
+        id: usize,
+    },
+    MutableAddressOf {
+        of: Box<Expr>,
+        line: usize,
+        column: usize,
+        id: usize,
     },
     Deref {
         right: Box<Expr>,
         line: usize,
         column: usize,
+        id: usize,
     },
 }
 

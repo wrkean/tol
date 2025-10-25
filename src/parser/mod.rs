@@ -51,26 +51,25 @@ impl<'a> Parser<'a> {
         match self.peek().kind() {
             TokenKind::Paraan => self.parse_par(),
             TokenKind::Ang => {
-                let stmt = self.parse_ang();
+                let stmt = self.parse_ang()?;
                 self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
-
-                stmt
+                Ok(stmt)
             }
             TokenKind::Ibalik => {
-                let stmt = self.parse_ibalik();
+                let stmt = self.parse_ibalik()?;
                 self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
 
-                stmt
+                Ok(stmt)
             }
             TokenKind::Bagay => self.parse_bagay(),
             TokenKind::Itupad => self.parse_itupad(),
             TokenKind::Kung => self.parse_kung(),
             TokenKind::Sa => self.parse_sa(), // Pharsa?
             _ => {
-                let expr_stmt = self.parse_expr_stmt();
+                let expr_stmt = self.parse_expr_stmt()?;
                 self.consume(TokenKind::SemiColon, self.expect_err("`;`"))?;
 
-                expr_stmt
+                Ok(expr_stmt)
             }
         }
     }
@@ -166,7 +165,13 @@ impl<'a> Parser<'a> {
 
         let mut statements = Vec::new();
         while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBrace {
-            statements.push(self.parse_statement()?);
+            match self.parse_statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => {
+                    e.display(self.source_path);
+                    self.synchronize_until(&[TokenKind::RightBrace]);
+                }
+            };
         }
 
         if self.is_at_end() {
@@ -230,6 +235,7 @@ impl<'a> Parser<'a> {
                 self.peek().column(),
             ),
         )?;
+        // println!("{:?}", self.peek());
         let rhs = self.parse_expression(0)?;
 
         let id = self.ast_id;
@@ -340,7 +346,13 @@ impl<'a> Parser<'a> {
 
         let mut methods = Vec::new();
         while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBrace {
-            methods.push(self.parse_method()?);
+            match self.parse_method() {
+                Ok(method) => methods.push(method),
+                Err(e) => {
+                    e.display(self.source_path);
+                    self.synchronize_until(&[TokenKind::RightBrace]);
+                }
+            }
         }
 
         if self.is_at_end() {
@@ -535,9 +547,19 @@ impl<'a> Parser<'a> {
             "*" => {
                 self.advance();
 
-                let right_type = self.parse_type()?;
+                match self.peek().kind() {
+                    TokenKind::Maiba => {
+                        self.advance();
+                        let right_type = self.parse_type()?;
 
-                Ok(TolType::Pointer(Box::new(right_type)))
+                        Ok(TolType::MutablePointer(Box::new(right_type)))
+                    }
+                    _ => {
+                        let right_type = self.parse_type()?;
+
+                        Ok(TolType::Pointer(Box::new(right_type)))
+                    }
+                }
             }
             _ => Ok(TolType::UnknownIdentifier(
                 self.advance().lexeme().to_string(),
@@ -546,6 +568,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Result<Expr, CompilerError> {
+        // println!("{:#?}", self.peek());
         let mut left = self.nud()?;
 
         while !self.is_at_end() {
@@ -562,11 +585,13 @@ impl<'a> Parser<'a> {
     }
 
     fn nud(&mut self) -> Result<Expr, CompilerError> {
-        let current_tok = self.advance().clone();
+        let current_tok = self.peek().clone();
 
         // TODO: Add precedence for unary ops later
         match current_tok.kind() {
             TokenKind::IntLit => {
+                self.advance();
+
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::IntLit {
@@ -575,6 +600,8 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::FloatLit => {
+                self.advance();
+
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::FloatLit {
@@ -583,6 +610,8 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::StringLit => {
+                self.advance();
+
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::StringLit {
@@ -591,6 +620,8 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::ByteStringLit => {
+                self.advance();
+
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::ByteStringLit {
@@ -599,6 +630,8 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::Identifier => {
+                self.advance();
+
                 let id = self.ast_id;
                 self.ast_id += 1;
                 Ok(Expr::Identifier {
@@ -607,6 +640,8 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::LeftParen => {
+                self.advance();
+
                 let expr = self.parse_expression(0)?;
                 self.consume(
                     TokenKind::RightParen,
@@ -616,6 +651,8 @@ impl<'a> Parser<'a> {
                 Ok(expr)
             }
             TokenKind::At => {
+                self.advance();
+
                 let name = self.advance().clone();
 
                 self.consume(TokenKind::LeftParen, self.expect_err("`(`"))?;
@@ -626,24 +663,50 @@ impl<'a> Parser<'a> {
                 Ok(Expr::MagicFnCall { name, args, id })
             }
             TokenKind::Amper => {
-                let right = self.parse_expression(0)?;
+                self.advance();
+                match self.peek().kind() {
+                    TokenKind::Maiba => {
+                        self.advance();
+                        let right = self.parse_expression(0)?;
 
-                Ok(Expr::AddressOf {
-                    of: Box::new(right),
-                    line: current_tok.line(),
-                    column: current_tok.column(),
-                })
+                        let id = self.ast_id;
+                        self.ast_id += 1;
+                        Ok(Expr::MutableAddressOf {
+                            of: Box::new(right),
+                            line: current_tok.line(),
+                            column: current_tok.column(),
+                            id,
+                        })
+                    }
+                    _ => {
+                        let right = self.parse_expression(0)?;
+
+                        let id = self.ast_id;
+                        self.ast_id += 1;
+                        Ok(Expr::AddressOf {
+                            of: Box::new(right),
+                            line: current_tok.line(),
+                            column: current_tok.column(),
+                            id,
+                        })
+                    }
+                }
             }
             TokenKind::Star => {
+                self.advance();
                 let right = self.parse_expression(0)?;
 
+                let id = self.ast_id;
+                self.ast_id += 1;
                 Ok(Expr::Deref {
                     right: Box::new(right),
                     line: current_tok.line(),
                     column: current_tok.column(),
+                    id,
                 })
             }
             TokenKind::LeftBracket => {
+                self.advance();
                 let mut elements = Vec::new();
                 while !self.is_at_end() && self.peek().kind() != &TokenKind::RightBracket {
                     elements.push(self.parse_expression(0)?);
@@ -911,9 +974,17 @@ impl<'a> Parser<'a> {
         if self.is_at_end() {
             return;
         }
+
         self.advance();
 
         while !self.is_at_end() {
+            let previous = &self.tokens[self.current - 1];
+            if matches!(
+                previous.kind(),
+                TokenKind::SemiColon | TokenKind::RightBrace
+            ) {
+                return;
+            }
             match self.peek().kind() {
                 TokenKind::Paraan
                 | TokenKind::Ang
@@ -921,11 +992,34 @@ impl<'a> Parser<'a> {
                 | TokenKind::Bagay
                 | TokenKind::Kung
                 | TokenKind::At
-                | TokenKind::Itupad => return,
+                | TokenKind::Itupad
+                | TokenKind::Sa => return,
                 _ => {}
             }
 
             self.advance();
+        }
+    }
+
+    fn synchronize_until(&mut self, end_tokens: &[TokenKind]) {
+        while !self.is_at_end() {
+            if end_tokens.contains(self.peek().kind()) {
+                return;
+            }
+
+            match self.peek().kind() {
+                TokenKind::Paraan
+                | TokenKind::Ang
+                | TokenKind::Ibalik
+                | TokenKind::Bagay
+                | TokenKind::Kung
+                | TokenKind::At
+                | TokenKind::Itupad
+                | TokenKind::Sa => return,
+                _ => {
+                    self.advance();
+                }
+            }
         }
     }
 

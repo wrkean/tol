@@ -113,7 +113,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // }
 
         // println!("{:?}", self.type_table.keys());
-        println!("{:#?}", self.type_table);
+        // println!("{:#?}", self.type_table);
     }
 
     fn analyze_stmt(&mut self, stmt: &Stmt) {
@@ -717,7 +717,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     ));
                 }
 
-                self.ensure_mutability(left)?;
+                self.ensure_lvalue_is_mutable(left, *line, *column)?;
 
                 let left_type = self.analyze_expression(left)?;
                 let right_type = self.analyze_expression(right)?;
@@ -829,14 +829,37 @@ impl<'a> SemanticAnalyzer<'a> {
                         .add_note("Ang halimbawa nito ay mga integer na literal (41, 67) o mga pagtawag ng paraan (tawag())"));
                 }
 
-                let right_type = self.analyze_expression(of)?;
+                // of can be mutable or immutable, so we are not gonna check it
 
-                Ok(TolType::Pointer(Box::new(right_type)))
+                let of_type = self.analyze_expression(of)?;
+
+                Ok(TolType::Pointer(Box::new(of_type)))
+            }
+            Expr::MutableAddressOf {
+                of, line, column, ..
+            } => {
+                if !of.is_lvalue() {
+                    return Err(CompilerError::new(
+                        "Hindi pwedeng rvalue ang nasa kanan ng `&`",
+                        ErrorKind::Error,
+                        *line,
+                        *column,
+                    )
+                        .add_note("Ang rvalue ay tumutukoy sa mga expresyon na makikita mo sa kanan ng assignment (`=`) pero hindi mo makikita sa kaliwa")
+                        .add_note("Ang halimbawa nito ay mga integer na literal (41, 67) o mga pagtawag ng paraan (tawag())"));
+                }
+
+                self.ensure_lvalue_is_mutable(of, *line, *column)?;
+
+                let of_type = self.analyze_expression(of)?;
+
+                Ok(TolType::MutablePointer(Box::new(of_type)))
             }
             Expr::Deref {
                 right,
                 line,
                 column,
+                ..
             } => {
                 if !right.is_lvalue() {
                     return Err(CompilerError::new(
@@ -883,31 +906,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 arg_types.insert(0, left_type);
             }
 
-            let callee_symbol = match callee.as_ref() {
-                Expr::Identifier { token, .. } => {
-                    self.lookup_symbol(token.lexeme(), token.line(), token.column())
-                }
-                Expr::MemberAccess {
-                    left,
-                    member,
-                    line,
-                    column,
-                    ..
-                } => self.lookup_member_access(left, member, *line, *column),
-                Expr::ScopeResolution {
-                    left,
-                    field,
-                    line,
-                    column,
-                    ..
-                } => self.lookup_scope_resolution(left, field, *line, *column),
-                _ => Err(CompilerError::new(
-                    "Hindi ito pwedeng tawagin",
-                    ErrorKind::Error,
-                    line,
-                    column,
-                )),
-            }?;
+            let callee_symbol = self.lookup_lvalue(callee, line, column)?;
 
             match callee_symbol {
                 Symbol::Paraan {
@@ -1078,6 +1077,39 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         } else {
             unreachable!()
+        }
+    }
+
+    fn lookup_lvalue(
+        &mut self,
+        lvalue: &Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<&Symbol, CompilerError> {
+        match lvalue {
+            Expr::Identifier { token, .. } => {
+                self.lookup_symbol(token.lexeme(), token.line(), token.column())
+            }
+            Expr::MemberAccess {
+                left,
+                member,
+                line,
+                column,
+                ..
+            } => self.lookup_member_access(left, member, *line, *column),
+            Expr::ScopeResolution {
+                left,
+                field,
+                line,
+                column,
+                ..
+            } => self.lookup_scope_resolution(left, field, *line, *column),
+            _ => Err(CompilerError::new(
+                "Hindi ito pwedeng tawagin",
+                ErrorKind::Error,
+                line,
+                column,
+            )),
         }
     }
 
@@ -1279,24 +1311,72 @@ impl<'a> SemanticAnalyzer<'a> {
     //             column,
     //         ))
     // }
+    fn ensure_lvalue_is_mutable(
+        &mut self,
+        lvalue: &Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
+        // // WARN: Only works for identifiers for now
+        // if let Expr::Identifier { token, .. } = lvalue
+        //     && let Symbol::Var { mutable, .. } =
+        //         self.lookup_symbol(token.lexeme(), token.line(), token.column())?
+        //     && !*mutable
+        // {
+        //     return Err(CompilerError::new(
+        //         &format!("Ang `{}` ay hindi `maiba`", token.lexeme()),
+        //         ErrorKind::Error,
+        //         token.line(),
+        //         token.column(),
+        //     )
+        //     .add_help("Subukan mong lagyan ng `maiba` ang deklarasyon nito"));
+        // }
+        let lvalue_symbol = self.lookup_lvalue(lvalue, line, column)?;
 
-    fn ensure_mutability(&self, lvalue: &Expr) -> Result<(), CompilerError> {
-        // WARN: Only works for identifiers for now
-        if let Expr::Identifier { token, .. } = lvalue
-            && let Symbol::Var { mutable, .. } =
-                self.lookup_symbol(token.lexeme(), token.line(), token.column())?
-            && !*mutable
-        {
-            return Err(CompilerError::new(
-                &format!("Ang `{}` ay hindi `maiba`", token.lexeme()),
-                ErrorKind::Error,
-                token.line(),
-                token.column(),
-            )
-            .add_help("Subukan mong lagyan ng `maiba` ang deklarasyon nito"));
+        match lvalue_symbol {
+            Symbol::Var { name, mutable, .. } => {
+                if *mutable {
+                    Ok(())
+                } else {
+                    Err(CompilerError::new(
+                        &format!("Ang `{}` ay hindi `maiba`", name),
+                        ErrorKind::Error,
+                        line,
+                        column,
+                    )
+                    .add_help("Subukan mong lagyan ng `maiba` ang deklarasyon nito"))
+                }
+            }
+            // WARN: Is this really unreachable?
+            _ => unreachable!(),
         }
+    }
 
-        Ok(())
+    fn ensure_lvalue_is_immutable(
+        &mut self,
+        lvalue: &Expr,
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
+        let lvalue_symbol = self.lookup_lvalue(lvalue, line, column)?;
+
+        match lvalue_symbol {
+            Symbol::Var { name, mutable, .. } => {
+                if !*mutable {
+                    Ok(())
+                } else {
+                    Err(CompilerError::new(
+                        &format!("Ang `{}` ay `maiba`", name),
+                        ErrorKind::Error,
+                        line,
+                        column,
+                    )
+                    .add_help("Subukan mong tanggalin ang `maiba` sa deklarasyon nito"))
+                }
+            }
+            // WARN: Is this really unreachable?
+            _ => unreachable!(),
+        }
     }
 
     fn enter_scope(&mut self) {

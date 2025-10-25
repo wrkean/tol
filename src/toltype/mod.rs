@@ -43,6 +43,7 @@ pub enum TolType {
     UnknownIdentifier(String),
     Array(Box<TolType>, Option<usize>),
     Pointer(Box<TolType>),
+    MutablePointer(Box<TolType>),
 
     // Special
     AkoType,
@@ -113,6 +114,10 @@ impl TolType {
                 }
             }
             (Pointer(t1), Pointer(t2)) => t1.is_assignment_compatible(t2, line, column),
+            (MutablePointer(t1), Pointer(t2)) => t1.is_assignment_compatible(t2, line, column),
+            (MutablePointer(t1), MutablePointer(t2)) => {
+                t1.is_assignment_compatible(t2, line, column)
+            }
 
             _ => err(format!(
                 "Ang tipong `{}` ay hindi bagay sa tipong `{}`",
@@ -142,7 +147,8 @@ impl TolType {
             TolType::Bagay(s) => s.to_string(),
             TolType::UnknownIdentifier(s) => s.to_string(),
             TolType::Array(inner, _) => format!("TOL_Array_{}", inner.as_c()),
-            TolType::Pointer(inner) => format!("{}*", inner.as_c()),
+            TolType::Pointer(inner) => format!("const {}*", inner.as_c()),
+            TolType::MutablePointer(inner) => format!("{}*", inner.as_c()),
             _ => {
                 // Semantic analyzer already checks if the types are valid, so this maybe won't
                 // trigger
@@ -194,6 +200,7 @@ impl fmt::Display for TolType {
             TolType::UnknownIdentifier(s) => write!(f, "{}", s),
             TolType::Array(t, _) => write!(f, "[{}]", t),
             TolType::Pointer(inner) => write!(f, "Ptr[{}]", inner),
+            TolType::MutablePointer(inner) => write!(f, "MaibaPtr[{}]", inner),
             _ => write!(f, "<hindi_tipo>"),
         }
     }
