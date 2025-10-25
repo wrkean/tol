@@ -1,14 +1,18 @@
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
-    parser::ast::{
-        expr::Expr,
-        stmt::{KungBranch, Stmt},
+    parser::{
+        ast::{
+            expr::Expr,
+            stmt::{KungBranch, Stmt},
+        },
+        module::Module,
     },
     toltype::TolType,
 };
 
 pub mod ast;
+pub mod module;
 
 pub struct Parser<'a> {
     tokens: &'a Vec<Token>,
@@ -27,7 +31,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Stmt {
+    pub fn parse(&mut self) -> Module {
         let mut statements = Vec::new();
         while !self.is_at_end() {
             if self.peek().kind() == &TokenKind::Eof {
@@ -44,7 +48,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Stmt::Program(statements)
+        Module::new(self.source_path.to_string(), statements)
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, CompilerError> {

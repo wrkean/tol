@@ -3,36 +3,29 @@ use std::collections::{HashMap, hash_map::Entry};
 use crate::{
     error::{CompilerError, ErrorKind},
     lexer::{token::Token, token_kind::TokenKind},
-    parser::ast::{
-        expr::Expr,
-        stmt::{KungBranch, Stmt},
+    parser::{
+        ast::{
+            expr::Expr,
+            stmt::{KungBranch, Stmt},
+        },
+        module::Module,
     },
     symbol::Symbol,
     toltype::{TolType, type_info::TypeInfo},
 };
 
 pub struct SemanticAnalyzer<'a> {
-    ast: &'a Stmt,
-    source_path: &'a str,
-    symbol_table: Vec<HashMap<String, Symbol>>,
-    type_table: HashMap<String, TypeInfo>,
+    parent_module: &'a mut Module,
     has_error: bool,
     current_func_return_type: TolType,
-    inferred_types: HashMap<usize, TolType>,
-    declared_array_types: Vec<String>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
-    pub fn new(ast: &'a Stmt, source_path: &'a str) -> Self {
+    pub fn new(parent_module: &'a mut Module) -> Self {
         let mut new_analyzer = Self {
-            ast,
-            source_path,
-            symbol_table: vec![HashMap::new()],
-            type_table: HashMap::new(),
+            parent_module,
             has_error: false,
             current_func_return_type: TolType::Unknown,
-            inferred_types: HashMap::new(),
-            declared_array_types: Vec::new(),
         };
 
         // Declare magic functions first
@@ -46,50 +39,36 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn declare_primitive_types(&mut self) {
         // Signed integers
-        self.type_table
-            .insert("i8".to_string(), TypeInfo::new(TolType::I8));
-        self.type_table
-            .insert("i16".to_string(), TypeInfo::new(TolType::I16));
-        self.type_table
-            .insert("i32".to_string(), TypeInfo::new(TolType::I32));
-        self.type_table
-            .insert("i64".to_string(), TypeInfo::new(TolType::I64));
-        self.type_table
-            .insert("isukat".to_string(), TypeInfo::new(TolType::ISukat));
+        let type_table = &mut self.parent_module.type_table;
+
+        type_table.insert("i8".to_string(), TypeInfo::new(TolType::I8));
+        type_table.insert("i16".to_string(), TypeInfo::new(TolType::I16));
+        type_table.insert("i32".to_string(), TypeInfo::new(TolType::I32));
+        type_table.insert("i64".to_string(), TypeInfo::new(TolType::I64));
+        type_table.insert("isukat".to_string(), TypeInfo::new(TolType::ISukat));
 
         // Unsigned integers
-        self.type_table
-            .insert("u8".to_string(), TypeInfo::new(TolType::U8));
-        self.type_table
-            .insert("u16".to_string(), TypeInfo::new(TolType::U16));
-        self.type_table
-            .insert("u32".to_string(), TypeInfo::new(TolType::U32));
-        self.type_table
-            .insert("u64".to_string(), TypeInfo::new(TolType::U64));
-        self.type_table
-            .insert("usukat".to_string(), TypeInfo::new(TolType::USukat));
+        type_table.insert("u8".to_string(), TypeInfo::new(TolType::U8));
+        type_table.insert("u16".to_string(), TypeInfo::new(TolType::U16));
+        type_table.insert("u32".to_string(), TypeInfo::new(TolType::U32));
+        type_table.insert("u64".to_string(), TypeInfo::new(TolType::U64));
+        type_table.insert("usukat".to_string(), TypeInfo::new(TolType::USukat));
 
         // Floating-point
-        self.type_table
-            .insert("lutang".to_string(), TypeInfo::new(TolType::Lutang));
-        self.type_table
-            .insert("dobletang".to_string(), TypeInfo::new(TolType::DobleTang));
+        type_table.insert("lutang".to_string(), TypeInfo::new(TolType::Lutang));
+        type_table.insert("dobletang".to_string(), TypeInfo::new(TolType::DobleTang));
 
         // Others
-        self.type_table
-            .insert("bool".to_string(), TypeInfo::new(TolType::Bool));
-        self.type_table
-            .insert("kar".to_string(), TypeInfo::new(TolType::Kar));
+        type_table.insert("bool".to_string(), TypeInfo::new(TolType::Bool));
+        type_table.insert("kar".to_string(), TypeInfo::new(TolType::Kar));
     }
 
     pub fn analyze(&mut self) {
-        let statements = match self.ast {
-            Stmt::Program(stmts) => stmts,
-            _ => panic!("ast did not start with a program node"),
-        };
+        // Temporarily own statements
+        let statements = std::mem::take(&mut self.parent_module.ast);
 
         // Collect type declarations
-        for stmt in statements {
+        for stmt in &statements {
             if let Stmt::Bagay {
                 bagay_identifier,
                 fields,
@@ -97,16 +76,19 @@ impl<'a> SemanticAnalyzer<'a> {
             } = stmt
             {
                 self.analyze_bagay(bagay_identifier, fields)
-                    .unwrap_or_else(|e| e.display(self.source_path));
+                    .unwrap_or_else(|e| e.display(&self.parent_module.source_path));
             }
         }
 
         // Second pass: analyze everything else
-        for stmt in statements.iter() {
+        for stmt in &statements {
             if !matches!(stmt, Stmt::Bagay { .. }) {
                 self.analyze_stmt(stmt);
             }
         }
+
+        // Put it back
+        self.parent_module.ast = statements;
 
         // for (id, ty) in &self.inferred_types {
         //     println!("{} => {}", id, ty);
@@ -130,7 +112,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 .analyze_ang(*mutable, ang_identifier, ang_type, rhs, *line, *column, *id)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }),
             Stmt::Par {
                 par_identifier,
@@ -144,18 +126,18 @@ impl<'a> SemanticAnalyzer<'a> {
                 .analyze_par(par_identifier, params, return_type, block)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }),
             Stmt::Ibalik {
                 rhs, line, column, ..
             } => self.analyze_ibalik(rhs, line, column).unwrap_or_else(|e| {
                 self.has_error = true;
-                e.display(self.source_path);
+                e.display(&self.parent_module.source_path);
             }),
             Stmt::ExprS { expr, .. } => {
                 if let Err(e) = self.analyze_expression(expr) {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }
             }
             Stmt::Bagay {
@@ -166,7 +148,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 .analyze_bagay(bagay_identifier, fields)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }),
             Stmt::Itupad {
                 itupad_for,
@@ -177,12 +159,12 @@ impl<'a> SemanticAnalyzer<'a> {
             } => {
                 if let Err(e) = self.analyze_itupad(itupad_for, itupad_block, *line, *column) {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }
             }
             Stmt::Kung { branches, .. } => self.analyze_kung(branches).unwrap_or_else(|e| {
                 self.has_error = true;
-                e.display(self.source_path);
+                e.display(&self.parent_module.source_path);
             }),
             Stmt::Sa {
                 iterator,
@@ -194,16 +176,15 @@ impl<'a> SemanticAnalyzer<'a> {
                 .analyze_sa(iterator, bind, block, *id)
                 .unwrap_or_else(|e| {
                     self.has_error = true;
-                    e.display(self.source_path);
+                    e.display(&self.parent_module.source_path);
                 }),
             Stmt::Block { statements, .. } => self.analyze_block(statements).unwrap_or_else(|e| {
                 self.has_error = true;
-                e.display(self.source_path);
+                e.display(&self.parent_module.source_path);
             }),
             // TODO: analyze ts
             Stmt::ItupadBlock { .. } => {}
             Stmt::Method { .. } => {}
-            Stmt::Program(_) => {}
         };
     }
 
@@ -255,14 +236,10 @@ impl<'a> SemanticAnalyzer<'a> {
             let array_c = format!("TOL_Array_{}", inner_c);
 
             // Step 3: store this array type if not already declared
-            if !self.declared_array_types.contains(&array_c) {
-                self.declared_array_types.push(array_c);
+            if !self.parent_module.declared_array_types.contains(&array_c) {
+                self.parent_module.declared_array_types.push(array_c);
             }
         }
-    }
-
-    pub fn get_declared_array_types(&self) -> &Vec<String> {
-        &self.declared_array_types
     }
 
     pub fn infer_type(&mut self, expr: &Expr, id: usize) -> Result<TolType, CompilerError> {
@@ -270,7 +247,9 @@ impl<'a> SemanticAnalyzer<'a> {
 
         let inferred_type = self.resolve_expr_type(expr_type);
 
-        self.inferred_types.insert(id, inferred_type.clone());
+        self.parent_module
+            .inferred_types
+            .insert(id, inferred_type.clone());
 
         Ok(inferred_type)
     }
@@ -288,22 +267,24 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn resolve_type(
-        &self,
+        &mut self,
         type_to_resolve: &TolType,
         line: usize,
         column: usize,
     ) -> Result<TolType, CompilerError> {
+        let type_table = &mut self.parent_module.type_table;
         match type_to_resolve {
-            TolType::UnknownIdentifier(id) => self
-                .type_table
-                .get(id)
-                .map(|t| t.kind.clone())
-                .ok_or(CompilerError::new(
-                    &format!("Hindi valid na tipo ang `{}`", id),
-                    ErrorKind::Error,
-                    line,
-                    column,
-                )),
+            TolType::UnknownIdentifier(id) => {
+                type_table
+                    .get(id)
+                    .map(|t| t.kind.clone())
+                    .ok_or(CompilerError::new(
+                        &format!("Hindi valid na tipo ang `{}`", id),
+                        ErrorKind::Error,
+                        line,
+                        column,
+                    ))
+            }
             _ => Ok(type_to_resolve.clone()),
         }
     }
@@ -400,7 +381,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // Forward declare the type in the type table, this
         // allows fields to have indirect recursive types
         let bagay_type = TolType::Bagay(bagay_name.to_string());
-        match self.type_table.entry(bagay_name.to_string()) {
+        match self.parent_module.type_table.entry(bagay_name.to_string()) {
             Entry::Occupied(_) => {
                 return Err(CompilerError::new(
                     &format!(
@@ -449,6 +430,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
         // Store fields into the type as a map
         let field_map = &mut self
+            .parent_module
             .type_table
             .get_mut(&bagay_type.to_string())
             .unwrap()
@@ -517,6 +499,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         let type_info = self
+            .parent_module
             .type_table
             .get_mut(&itupad_for.to_string())
             .ok_or_else(|| {
@@ -778,7 +761,9 @@ impl<'a> SemanticAnalyzer<'a> {
                 let resulting_type =
                     TolType::Array(Box::new(assumed_element_type), Some(elements.len()));
 
-                self.inferred_types.insert(*id, resulting_type.clone());
+                self.parent_module
+                    .inferred_types
+                    .insert(*id, resulting_type.clone());
 
                 Ok(resulting_type)
             }
@@ -1008,7 +993,7 @@ impl<'a> SemanticAnalyzer<'a> {
             let members = match callee_symbol.clone() {
                 Symbol::Bagay { name } => {
                     bagay_name = name.clone();
-                    &self.type_table.get(&name).unwrap().members
+                    &self.parent_module.type_table.get(&name).unwrap().members
                 }
                 _ => {
                     return Err(CompilerError::new(
@@ -1123,6 +1108,7 @@ impl<'a> SemanticAnalyzer<'a> {
         let left_type = self.analyze_expression(left)?;
 
         let type_info = self
+            .parent_module
             .type_table
             .get(&left_type.to_string())
             .ok_or(CompilerError::new(
@@ -1156,15 +1142,16 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<&Symbol, CompilerError> {
         match left {
             Expr::Identifier { token, .. } => {
-                let type_info = self
-                    .type_table
-                    .get(token.lexeme())
-                    .ok_or(CompilerError::new(
-                        &format!("Hindi narehistro ang `{}`", token.lexeme()),
-                        ErrorKind::Error,
-                        line,
-                        column,
-                    ))?;
+                let type_info =
+                    self.parent_module
+                        .type_table
+                        .get(token.lexeme())
+                        .ok_or(CompilerError::new(
+                            &format!("Hindi narehistro ang `{}`", token.lexeme()),
+                            ErrorKind::Error,
+                            line,
+                            column,
+                        ))?;
 
                 type_info
                     .static_members
@@ -1258,7 +1245,7 @@ impl<'a> SemanticAnalyzer<'a> {
         line: usize,
         column: usize,
     ) -> Result<&Symbol, CompilerError> {
-        for scope in self.symbol_table.iter().rev() {
+        for scope in self.parent_module.symbol_table.iter().rev() {
             if let Some(s) = scope.get(name) {
                 return Ok(s);
             }
@@ -1274,7 +1261,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
     /// Returns true if the key did not exist (means it is declared successfully), returns false otherwise.
     fn declare_symbol(&mut self, name: &str, symbol: Symbol) -> bool {
-        let current_scope = self.symbol_table.last_mut().unwrap();
+        let current_scope = self.parent_module.symbol_table.last_mut().unwrap();
 
         if !current_scope.contains_key(name) {
             current_scope.insert(name.to_string(), symbol);
@@ -1380,18 +1367,14 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn enter_scope(&mut self) {
-        self.symbol_table.push(HashMap::new());
+        self.parent_module.symbol_table.push(HashMap::new());
     }
 
     fn exit_scope(&mut self) {
-        let _ = self.symbol_table.pop();
+        let _ = self.parent_module.symbol_table.pop();
     }
 
     pub fn has_error(&self) -> bool {
         self.has_error
-    }
-
-    pub fn inferred_types(&self) -> &HashMap<usize, TolType> {
-        &self.inferred_types
     }
 }

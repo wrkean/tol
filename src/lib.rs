@@ -1,7 +1,8 @@
 use std::{
     fs,
-    io::Write,
-    process::{Command, Stdio},
+    io::{self},
+    path::Path,
+    process::Command,
 };
 
 use crate::{
@@ -16,31 +17,46 @@ mod semantic_analyzer;
 mod symbol;
 mod toltype;
 
-fn compile_c(c_code: &str) {
-    let mut child = Command::new("gcc")
-        .args(["-x", "c", "-", "-o", "exe"])
-        .stdin(Stdio::piped())
-        .stderr(Stdio::piped()) // capture errors
-        .spawn()
-        .expect("Failed to start gcc");
+fn compile_c(c_code: &str) -> io::Result<()> {
+    let filename = "generated.c";
 
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(c_code.as_bytes())
-        .unwrap();
+    fs::write(filename, c_code)?;
+    println!("Nagsulat sa: {filename}");
 
-    let output = child.wait_with_output().unwrap();
+    let clang_format_exists = Command::new("which")
+        .arg("clang-format")
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
 
-    if output.status.success() {
-        println!("Binary compiled: ./exe");
+    if clang_format_exists {
+        println!("Finoformat ang C code...");
+        let status = Command::new("clang-format")
+            .args(["-i", filename])
+            .status()?;
+
+        if !status.success() {
+            eprintln!("Nabigo ang clang-format");
+        }
     } else {
-        eprintln!(
-            "Compilation failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        println!("Hindi nahanap ang clang-format. Hindi na magfoformat.");
     }
+
+    println!("Kinocompile ang {filename} gamit ang gcc");
+
+    let output_binary = Path::new("generated").with_extension("out");
+
+    let status = Command::new("gcc")
+        .args([filename, "-o", output_binary.to_str().unwrap()])
+        .status()?;
+
+    if status.success() {
+        println!("Na-compile: ./generated.out");
+    } else {
+        eprintln!("Nabigong mag-compile");
+    }
+
+    Ok(())
 }
 
 // Returns the source string and the canonical path to it
@@ -67,19 +83,15 @@ pub fn compile(source: &str, path_to_source: &str) {
     }
 
     let mut parser = Parser::new(tokens, path_to_source);
-    let ast = parser.parse();
+    let mut main_module = parser.parse();
 
-    let mut analyzer = SemanticAnalyzer::new(&ast, path_to_source);
+    let mut analyzer = SemanticAnalyzer::new(&mut main_module);
     analyzer.analyze();
 
     if !analyzer.has_error() {
-        let mut codegen = CodeGenerator::new(
-            &ast,
-            analyzer.inferred_types(),
-            analyzer.get_declared_array_types(),
-        );
+        let mut codegen = CodeGenerator::new(&main_module);
         let c_code = codegen.generate();
-        compile_c(c_code);
+        compile_c(c_code).unwrap_or_else(|err| panic!("{err}"));
     }
 }
 

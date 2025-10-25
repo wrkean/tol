@@ -1,42 +1,33 @@
-use std::collections::HashMap;
-
 use crate::{
     lexer::token::Token,
-    parser::ast::{expr::Expr, stmt::Stmt},
+    parser::{
+        ast::{expr::Expr, stmt::Stmt},
+        module::Module,
+    },
     toltype::TolType,
 };
 
 pub struct CodeGenerator<'a> {
-    ast: &'a Stmt,
+    parent_module: &'a Module,
     output: String,
-    inferred_types: &'a HashMap<usize, TolType>,
-    declared_types: &'a Vec<String>,
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(
-        ast: &'a Stmt,
-        inferred_types: &'a HashMap<usize, TolType>,
-        declared_types: &'a Vec<String>,
-    ) -> Self {
+    pub fn new(parent_module: &'a Module) -> Self {
         // Parents must exist first
         Self {
-            ast,
+            parent_module,
             output: String::from(
                 "#include<stdio.h>\n\
 #include<stdlib.h>\n",
             ),
-            inferred_types,
-            declared_types,
         }
     }
 
     pub fn generate(&mut self) -> &String {
         self.output.push_str(&self.include_custom_headers());
-        if let Stmt::Program(statements) = self.ast {
-            let statements = self.gen_statements(statements);
-            self.output.push_str(&statements);
-        }
+        let statements = self.gen_statements(&self.parent_module.ast);
+        self.output.push_str(&statements);
 
         // Call the main function defined by the user in C's main function
         self.output.push_str("int main(){__TOL_main__();return 0;}");
@@ -196,7 +187,6 @@ impl<'a> CodeGenerator<'a> {
                     );
                 }
             },
-            Stmt::Program(statements) => self.gen_statements(statements),
             _ => "".to_string(),
         }
     }
@@ -386,7 +376,7 @@ impl<'a> CodeGenerator<'a> {
     // Declare C struct representation of this language's arrays
     fn declare_array_structs(&self) -> String {
         let mut array_structs = String::new();
-        for declared_type in self.declared_types {
+        for declared_type in &self.parent_module.declared_array_types {
             array_structs.push_str(&format!(
                 "DEFINE_TOL_ARRAY_STRUCT({})\n",
                 declared_type.strip_prefix("TOL_Array_").unwrap(),
@@ -432,6 +422,6 @@ impl<'a> CodeGenerator<'a> {
 
     fn get_inferred_type(&self, id: usize) -> &TolType {
         // println!("Getting id: {}", id);
-        self.inferred_types.get(&id).unwrap()
+        self.parent_module.inferred_types.get(&id).unwrap()
     }
 }

@@ -2,7 +2,6 @@ use crate::{lexer::token::Token, parser::ast::expr::Expr, toltype::TolType};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Stmt {
-    Program(Vec<Stmt>),
     Par {
         par_identifier: Token,
         params: Vec<(Token, TolType)>,

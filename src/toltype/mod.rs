@@ -158,21 +158,6 @@ impl TolType {
             }
         }
     }
-
-    // Special case for arrays because C array syntax
-    // is weird
-    pub fn array_suffix(&self) -> String {
-        match self {
-            TolType::Array(inner, len_opt) => {
-                let inner_suffix = inner.array_suffix();
-                match len_opt {
-                    Some(len) => format!("[{}]{}", len, inner_suffix),
-                    None => format!("[]{}", inner_suffix),
-                }
-            }
-            _ => String::new(),
-        }
-    }
 }
 
 impl fmt::Display for TolType {
