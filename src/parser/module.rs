@@ -14,7 +14,7 @@ pub struct Module {
     pub module_name: String,
     pub ast: Vec<Stmt>,
     pub symbol_table: Vec<HashMap<String, Symbol>>,
-    pub type_table: HashMap<String, TypeInfo>,
+    pub type_table: Vec<HashMap<String, TypeInfo>>,
     pub inferred_types: HashMap<usize, TolType>,
     pub declared_array_types: Vec<String>,
 }
@@ -35,7 +35,7 @@ impl Module {
             ast: Vec::new(),
             module_name,
             symbol_table: vec![HashMap::new()],
-            type_table: HashMap::new(),
+            type_table: vec![HashMap::new()],
             inferred_types: HashMap::new(),
             declared_array_types: Vec::new(),
         }

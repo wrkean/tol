@@ -39,28 +39,26 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn declare_primitive_types(&mut self) {
         // Signed integers
-        let type_table = &mut self.parent_module.type_table;
-
-        type_table.insert("i8".to_string(), TypeInfo::new(TolType::I8));
-        type_table.insert("i16".to_string(), TypeInfo::new(TolType::I16));
-        type_table.insert("i32".to_string(), TypeInfo::new(TolType::I32));
-        type_table.insert("i64".to_string(), TypeInfo::new(TolType::I64));
-        type_table.insert("isukat".to_string(), TypeInfo::new(TolType::ISukat));
+        self.declare_type("i8", TypeInfo::new(TolType::I8));
+        self.declare_type("i16", TypeInfo::new(TolType::I16));
+        self.declare_type("i32", TypeInfo::new(TolType::I32));
+        self.declare_type("i64", TypeInfo::new(TolType::I64));
+        self.declare_type("isukat", TypeInfo::new(TolType::ISukat));
 
         // Unsigned integers
-        type_table.insert("u8".to_string(), TypeInfo::new(TolType::U8));
-        type_table.insert("u16".to_string(), TypeInfo::new(TolType::U16));
-        type_table.insert("u32".to_string(), TypeInfo::new(TolType::U32));
-        type_table.insert("u64".to_string(), TypeInfo::new(TolType::U64));
-        type_table.insert("usukat".to_string(), TypeInfo::new(TolType::USukat));
+        self.declare_type("u8", TypeInfo::new(TolType::U8));
+        self.declare_type("u16", TypeInfo::new(TolType::U16));
+        self.declare_type("u32", TypeInfo::new(TolType::U32));
+        self.declare_type("u64", TypeInfo::new(TolType::U64));
+        self.declare_type("usukat", TypeInfo::new(TolType::USukat));
 
         // Floating-point
-        type_table.insert("lutang".to_string(), TypeInfo::new(TolType::Lutang));
-        type_table.insert("dobletang".to_string(), TypeInfo::new(TolType::DobleTang));
+        self.declare_type("lutang", TypeInfo::new(TolType::Lutang));
+        self.declare_type("dobletang", TypeInfo::new(TolType::DobleTang));
 
         // Others
-        type_table.insert("bool".to_string(), TypeInfo::new(TolType::Bool));
-        type_table.insert("kar".to_string(), TypeInfo::new(TolType::Kar));
+        self.declare_type("bool", TypeInfo::new(TolType::Bool));
+        self.declare_type("kar", TypeInfo::new(TolType::Kar));
     }
 
     pub fn analyze(&mut self) {
@@ -240,18 +238,9 @@ impl<'a> SemanticAnalyzer<'a> {
         line: usize,
         column: usize,
     ) -> Result<TolType, CompilerError> {
-        let type_table = &mut self.parent_module.type_table;
         match type_to_resolve {
             TolType::UnknownIdentifier(id) => {
-                type_table
-                    .get(id)
-                    .map(|t| t.kind.clone())
-                    .ok_or(CompilerError::new(
-                        &format!("Hindi valid na tipo ang `{}`", id),
-                        ErrorKind::Error,
-                        line,
-                        column,
-                    ))
+                Ok(self.get_type_info(id, line, column)?.kind.clone())
             }
             _ => Ok(type_to_resolve.clone()),
         }
@@ -349,25 +338,16 @@ impl<'a> SemanticAnalyzer<'a> {
         // Forward declare the type in the type table, this
         // allows fields to have indirect recursive types
         let bagay_type = TolType::Bagay(bagay_name.to_string());
-        match self.parent_module.type_table.entry(bagay_name.to_string()) {
-            Entry::Occupied(_) => {
-                return Err(CompilerError::new(
-                    &format!(
-                        "Hindi marehistro ang `{}` dahil may ganitong tipo na",
-                        bagay_name
-                    ),
-                    ErrorKind::Error,
-                    bagay_identifier.line(),
-                    bagay_identifier.column(),
-                ));
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(TypeInfo {
-                    kind: bagay_type.clone(),
-                    members: HashMap::new(),
-                    static_members: HashMap::new(),
-                });
-            }
+        if !self.declare_type(bagay_name, TypeInfo::new(bagay_type)) {
+            return Err(CompilerError::new(
+                &format!(
+                    "Hindi maideklara ang `{}` dahil may ganitong tipo na sa kasalukuyang sakop",
+                    bagay_name
+                ),
+                ErrorKind::Error,
+                bagay_identifier.line(),
+                bagay_identifier.column(),
+            ));
         }
 
         let resolved_fields: Vec<(Token, TolType)> = fields
@@ -396,11 +376,16 @@ impl<'a> SemanticAnalyzer<'a> {
         }
         self.exit_scope();
 
-        // Store fields into the type as a map
+        // Store fields into the type as a map.
+        // No need to call lookup_type here since
+        // that type is guaranteed to be declared
+        // before reaching here.
         let field_map = &mut self
             .parent_module
             .type_table
-            .get_mut(&bagay_type.to_string())
+            .last_mut()
+            .unwrap()
+            .get_mut(bagay_name)
             .unwrap()
             .members;
         for (tok, ty) in &resolved_fields {
@@ -466,19 +451,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
 
-        let type_info = self
-            .parent_module
-            .type_table
-            .get_mut(&itupad_for.to_string())
-            .ok_or_else(|| {
-                CompilerError::new(
-                    &format!("Ang tipong {} ay hindi pa na-ideklara", &itupad_for),
-                    ErrorKind::Error,
-                    line,
-                    column,
-                )
-            })?;
-
+        let type_info = self.get_mut_type_info(&itupad_for.to_string(), line, column)?;
         for (met_sym, _) in &analyzed_methods {
             if let Symbol::Method {
                 name, is_static, ..
@@ -961,7 +934,7 @@ impl<'a> SemanticAnalyzer<'a> {
             let members = match callee_symbol.clone() {
                 Symbol::Bagay { name } => {
                     bagay_name = name.clone();
-                    &self.parent_module.type_table.get(&name).unwrap().members
+                    &self.get_type_info(&name, *line, *column)?.members
                 }
                 _ => {
                     return Err(CompilerError::new(
@@ -1075,17 +1048,7 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<&Symbol, CompilerError> {
         let left_type = self.analyze_expression(left)?;
 
-        let type_info = self
-            .parent_module
-            .type_table
-            .get(&left_type.to_string())
-            .ok_or(CompilerError::new(
-                &format!("Hindi nahanap ang tipong `{}` sa type table", left_type),
-                ErrorKind::Error,
-                line,
-                column,
-            ))?;
-
+        let type_info = self.get_type_info(&left_type.to_string(), line, column)?;
         type_info
             .members
             .get(member.lexeme())
@@ -1110,17 +1073,7 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<&Symbol, CompilerError> {
         match left {
             Expr::Identifier { token, .. } => {
-                let type_info =
-                    self.parent_module
-                        .type_table
-                        .get(token.lexeme())
-                        .ok_or(CompilerError::new(
-                            &format!("Hindi narehistro ang `{}`", token.lexeme()),
-                            ErrorKind::Error,
-                            line,
-                            column,
-                        ))?;
-
+                let type_info = self.get_type_info(token.lexeme(), line, column)?;
                 type_info
                     .static_members
                     .get(field.lexeme())
@@ -1227,12 +1180,63 @@ impl<'a> SemanticAnalyzer<'a> {
         ))
     }
 
+    fn get_type_info(
+        &self,
+        name: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<&TypeInfo, CompilerError> {
+        for scope in self.parent_module.type_table.iter().rev() {
+            if let Some(t) = scope.get(name) {
+                return Ok(t);
+            }
+        }
+
+        Err(CompilerError::new(
+            &format!("Ang tipong `{}` ay hindi na-ideklara", name),
+            ErrorKind::Error,
+            line,
+            column,
+        ))
+    }
+
+    fn get_mut_type_info(
+        &mut self,
+        name: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<&mut TypeInfo, CompilerError> {
+        for scope in self.parent_module.type_table.iter_mut().rev() {
+            if let Some(t) = scope.get_mut(name) {
+                return Ok(t);
+            }
+        }
+
+        Err(CompilerError::new(
+            &format!("Ang tipong `{}` ay hindi na-ideklara", name),
+            ErrorKind::Error,
+            line,
+            column,
+        ))
+    }
+
     /// Returns true if the key did not exist (means it is declared successfully), returns false otherwise.
     fn declare_symbol(&mut self, name: &str, symbol: Symbol) -> bool {
-        let current_scope = self.parent_module.symbol_table.last_mut().unwrap();
+        let current_symbol_scope = self.parent_module.symbol_table.last_mut().unwrap();
 
-        if !current_scope.contains_key(name) {
-            current_scope.insert(name.to_string(), symbol);
+        if !current_symbol_scope.contains_key(name) {
+            current_symbol_scope.insert(name.to_string(), symbol);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn declare_type(&mut self, name: &str, type_info: TypeInfo) -> bool {
+        let current_type_scope = self.parent_module.type_table.last_mut().unwrap();
+
+        if !current_type_scope.contains_key(name) {
+            current_type_scope.insert(name.to_string(), type_info);
             true
         } else {
             false
