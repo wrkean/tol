@@ -11,6 +11,16 @@ pub enum Stmt {
         column: usize,
         id: usize,
     },
+    GenericPar {
+        par_identifier: Token,
+        type_params: Vec<Token>,
+        params: Vec<(Token, TolType)>,
+        return_type: TolType,
+        block: Box<Stmt>,
+        line: usize,
+        column: usize,
+        id: usize,
+    },
     Method {
         is_static: bool,
         met_identifier: Token,

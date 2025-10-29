@@ -88,6 +88,12 @@ impl<'a> Parser<'a> {
             .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
             .clone();
 
+        let mut type_params = None;
+        if self.peek().kind() == &TokenKind::Lesser {
+            self.advance();
+            type_params = Some(self.parse_type_params()?);
+        }
+
         self.consume(
             TokenKind::LeftParen,
             self.expect_err("`(`")
@@ -109,15 +115,50 @@ impl<'a> Parser<'a> {
 
         let id = self.ast_id;
         self.ast_id += 1;
-        Ok(Stmt::Par {
-            par_identifier,
-            params,
-            return_type,
-            block: Box::new(block),
-            line: par_tok.line(),
-            column: par_tok.column(),
-            id,
-        })
+
+        if let Some(tp) = type_params {
+            Ok(Stmt::GenericPar {
+                par_identifier,
+                type_params: tp,
+                params,
+                return_type,
+                block: Box::new(block),
+                line: par_tok.line(),
+                column: par_tok.column(),
+                id,
+            })
+        } else {
+            Ok(Stmt::Par {
+                par_identifier,
+                params,
+                return_type,
+                block: Box::new(block),
+                line: par_tok.line(),
+                column: par_tok.column(),
+                id,
+            })
+        }
+    }
+
+    fn parse_type_params(&mut self) -> Result<Vec<Token>, CompilerError> {
+        let mut type_params = Vec::new();
+        while !self.is_at_end() && self.peek().kind() != &TokenKind::Greater {
+            let type_param = self
+                .consume(TokenKind::Identifier, self.expect_err("pangalan"))?
+                .clone();
+
+            if self.peek().kind() == &TokenKind::Comma {
+                self.advance();
+            } else if self.peek().kind() != &TokenKind::Greater {
+                self.consume(TokenKind::Greater, self.expect_err("`>`"))?;
+            }
+
+            type_params.push(type_param);
+        }
+
+        self.consume(TokenKind::Greater, self.expect_err("`>`"))?;
+
+        Ok(type_params)
     }
 
     fn parse_params(&mut self) -> Result<Vec<(Token, TolType)>, CompilerError> {

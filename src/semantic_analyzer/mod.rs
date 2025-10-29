@@ -122,6 +122,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 // column,
                 ..
             } => self.analyze_par(par_identifier, params, return_type, block),
+            Stmt::GenericPar { .. } => self.analyze_generic_par(stmt),
             Stmt::Ibalik {
                 rhs, line, column, ..
             } => self.analyze_ibalik(rhs, line, column),
@@ -152,6 +153,108 @@ impl<'a> SemanticAnalyzer<'a> {
             Stmt::ItupadBlock { .. } => Ok(()),
             Stmt::Method { .. } => Ok(()),
         }
+    }
+
+    fn analyze_generic_par(&mut self, generic_par: &Stmt) -> Result<(), CompilerError> {
+        if let Stmt::GenericPar {
+            par_identifier,
+            type_params,
+            params,
+            return_type,
+            block,
+            line,
+            column,
+            id,
+        } = generic_par
+        {
+            self.enter_scope();
+
+            // Declare type params as typevar
+            for tp in type_params {
+                if !self.declare_type(
+                    tp.lexeme(),
+                    TypeInfo::new(TolType::TypeVar(tp.lexeme().to_string())),
+                ) {
+                    return Err(CompilerError::new(
+                        &format!(
+                            "Ang tipong `{}` ay naideklara na sa kasalukuyang sakop",
+                            tp.lexeme()
+                        ),
+                        ErrorKind::Error,
+                        tp.line(),
+                        tp.column(),
+                    ));
+                }
+            }
+
+            let resolved_params: Vec<(Token, TolType)> = params
+                .iter()
+                .map(|(tok, ty)| {
+                    let resolved_param = self.resolve_type(ty, tok.line(), tok.column())?;
+
+                    Ok((tok.clone(), resolved_param))
+                })
+                .collect::<Result<_, CompilerError>>()?;
+
+            let resolved_return = self.resolve_type(return_type, *line, *column)?;
+
+            self.exit_scope();
+
+            if !self.declare_symbol(
+                par_identifier.lexeme(),
+                Symbol::GenericPar {
+                    name: par_identifier.lexeme().to_string(),
+                },
+            ) {
+                return Err(self.declared_in_scope_err(par_identifier));
+            }
+
+            let template_ast = Stmt::GenericPar {
+                par_identifier: par_identifier.clone(),
+                type_params: type_params.clone(),
+                params: resolved_params,
+                return_type: resolved_return,
+                block: Box::new(*block.clone()),
+                line: *line,
+                column: *column,
+                id: *id,
+            };
+
+            self.add_function_template(par_identifier.lexeme(), template_ast, *line, *column)?;
+
+            Ok(())
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn add_function_template(
+        &mut self,
+        name: &str,
+        template: Stmt,
+        line: usize,
+        column: usize,
+    ) -> Result<(), CompilerError> {
+        let registry = &mut self.parent_module.generic_function_templates;
+
+        match registry.entry(name.to_string()) {
+            Entry::Occupied(_) => {
+                return Err(CompilerError::new(
+                    &format!(
+                        "Cannot add function template `{}` as it is already added",
+                        name
+                    ),
+                    ErrorKind::Error,
+                    line,
+                    column,
+                ));
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(template);
+            }
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -593,7 +696,7 @@ impl<'a> SemanticAnalyzer<'a> {
             )),
             Expr::Identifier { token, .. } => Ok(self
                 .lookup_symbol(token.lexeme(), token.line(), token.column())?
-                .get_type()
+                .get_type(&self.parent_module.generic_function_templates)
                 .clone()),
             Expr::Binary {
                 op, left, right, ..
@@ -650,7 +753,9 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 Ok(TolType::Wala)
             }
-            Expr::FnCall { line, column, .. } => self.analyze_fncall(expr, *line, *column),
+            Expr::FnCall {
+                line, column, id, ..
+            } => self.analyze_fncall(expr, *line, *column, *id),
             Expr::MagicFnCall { name, args, .. } => {
                 let (line, column) = (name.line(), name.column());
                 let arg_types: Vec<TolType> = args
@@ -821,6 +926,7 @@ impl<'a> SemanticAnalyzer<'a> {
         fncall: &Expr,
         line: usize,
         column: usize,
+        mangle_id: usize,
     ) -> Result<TolType, CompilerError> {
         if let Expr::FnCall { callee, args, .. } = fncall {
             let mut arg_types: Vec<TolType> = args
@@ -853,6 +959,10 @@ impl<'a> SemanticAnalyzer<'a> {
 
                     Ok(return_type.clone())
                 }
+                Symbol::GenericPar { name } => {
+                    let name = name.clone();
+                    self.analyze_template_instance(&name, &arg_types, line, column, mangle_id)
+                }
                 _ => Err(CompilerError::new(
                     "Invalid ang tigatawag ng paraan",
                     ErrorKind::Error,
@@ -860,6 +970,136 @@ impl<'a> SemanticAnalyzer<'a> {
                     column,
                 )),
             }
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn analyze_template_instance(
+        &mut self,
+        name: &str,
+        concrete_types: &[TolType],
+        line: usize,
+        column: usize,
+        mamgle_id: usize,
+    ) -> Result<TolType, CompilerError> {
+        let template = match self.parent_module.generic_function_templates.get(name) {
+            Some(template) => template,
+            None => {
+                return Err(CompilerError::new(
+                    &format!("Walang mahanap na template `{}`", name),
+                    ErrorKind::Error,
+                    line,
+                    column,
+                ));
+            }
+        };
+
+        let instance = template.clone();
+
+        if let Stmt::GenericPar {
+            par_identifier,
+            type_params,
+            mut params,
+            return_type,
+            block,
+            line,
+            column,
+            id,
+        } = instance
+        {
+            let mut type_map = type_params
+                .iter()
+                .map(|tp| (tp.lexeme().to_string(), TolType::Unknown))
+                .collect::<HashMap<String, TolType>>();
+
+            let concrete_types = concrete_types
+                .iter()
+                .map(|t| self.resolve_expr_type(t.clone()))
+                .collect::<Vec<TolType>>();
+            // Step 2: Assign concrete types to type variables
+            for (i, tp) in type_params.iter().enumerate() {
+                if let Some(concrete) = concrete_types.get(i)
+                    && let Some(ty) = type_map.get_mut(tp.lexeme())
+                {
+                    *ty = concrete.clone();
+                }
+            }
+
+            for (tok, ty) in params.iter_mut() {
+                if let TolType::TypeVar(var_name) = ty {
+                    // Replace only if it’s still a type variable
+                    if let Some(mapped) = type_map.get(var_name) {
+                        *ty = mapped.clone();
+                    } else {
+                        return Err(CompilerError::new(
+                            &format!("Unknown type variable `{}`", var_name),
+                            ErrorKind::Error,
+                            tok.line(),
+                            tok.column(),
+                        ));
+                    }
+                }
+            }
+
+            let return_type = match return_type {
+                TolType::TypeVar(s) => type_map.get(&s).unwrap().clone(),
+                _ => return_type,
+            };
+
+            for (k, v) in type_map {
+                self.declare_type(
+                    &k,
+                    self.get_type_info(&v.to_string(), line, column)?.clone(),
+                );
+            }
+
+            let instance_name = format!(
+                "{}__{}",
+                par_identifier.lexeme(),
+                concrete_types
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join("__")
+            );
+
+            self.parent_module
+                .mangle_map
+                .insert(mamgle_id, instance_name.clone());
+
+            let param_types = params
+                .iter()
+                .map(|(_, t)| t.clone())
+                .collect::<Vec<TolType>>();
+            let instance_stmt = Stmt::Par {
+                par_identifier: Token::new(
+                    &instance_name,
+                    TokenKind::Identifier,
+                    par_identifier.line(),
+                    par_identifier.column(),
+                ),
+                params,
+                return_type: return_type.clone(),
+                block,
+                line,
+                column,
+                id,
+            };
+
+            let saved_scope = self.parent_module.symbol_table.clone();
+            self.parent_module.symbol_table.truncate(1);
+
+            self.analyze_stmt(&instance_stmt)?;
+            self.parent_module.symbol_table = saved_scope;
+
+            self.parent_module
+                .instantiated_functions
+                .insert(instance_name, instance_stmt);
+
+            Self::check_call(&concrete_types, &param_types, line, column)?;
+
+            Ok(return_type)
         } else {
             unreachable!()
         }
@@ -874,14 +1114,11 @@ impl<'a> SemanticAnalyzer<'a> {
             ..
         } = expr
         {
-            let sym = self.lookup_member_access(left, member, *line, *column)?;
-            match sym {
-                Symbol::Var { tol_type, .. } => Ok(tol_type.clone()),
-                Symbol::Paraan { return_type, .. } | Symbol::Method { return_type, .. } => {
-                    Ok(return_type.clone())
-                }
-                Symbol::Bagay { name } => Ok(TolType::Bagay(name.clone())),
-            }
+            let sym = self
+                .lookup_member_access(left, member, *line, *column)?
+                .clone();
+
+            Ok(sym.get_type(&self.parent_module.generic_function_templates))
         } else {
             unreachable!()
         }
@@ -992,15 +1229,11 @@ impl<'a> SemanticAnalyzer<'a> {
             ..
         } = expr
         {
-            let sym = self.lookup_scope_resolution(left, field, *line, *column)?;
+            let sym = self
+                .lookup_scope_resolution(left, field, *line, *column)?
+                .clone();
 
-            match sym {
-                Symbol::Var { tol_type, .. } => Ok(tol_type.clone()),
-                Symbol::Paraan { return_type, .. } | Symbol::Method { return_type, .. } => {
-                    Ok(return_type.clone())
-                }
-                Symbol::Bagay { name } => Ok(TolType::Bagay(name.clone())),
-            }
+            Ok(sym.get_type(&self.parent_module.generic_function_templates))
         } else {
             unreachable!()
         }
@@ -1311,39 +1544,41 @@ impl<'a> SemanticAnalyzer<'a> {
         }
     }
 
-    fn ensure_lvalue_is_immutable(
-        &mut self,
-        lvalue: &Expr,
-        line: usize,
-        column: usize,
-    ) -> Result<(), CompilerError> {
-        let lvalue_symbol = self.lookup_lvalue(lvalue, line, column)?;
-
-        match lvalue_symbol {
-            Symbol::Var { name, mutable, .. } => {
-                if !*mutable {
-                    Ok(())
-                } else {
-                    Err(CompilerError::new(
-                        &format!("Ang `{}` ay `maiba`", name),
-                        ErrorKind::Error,
-                        line,
-                        column,
-                    )
-                    .add_help("Subukan mong tanggalin ang `maiba` sa deklarasyon nito"))
-                }
-            }
-            // WARN: Is this really unreachable?
-            _ => unreachable!(),
-        }
-    }
+    // fn ensure_lvalue_is_immutable(
+    //     &mut self,
+    //     lvalue: &Expr,
+    //     line: usize,
+    //     column: usize,
+    // ) -> Result<(), CompilerError> {
+    //     let lvalue_symbol = self.lookup_lvalue(lvalue, line, column)?;
+    //
+    //     match lvalue_symbol {
+    //         Symbol::Var { name, mutable, .. } => {
+    //             if !*mutable {
+    //                 Ok(())
+    //             } else {
+    //                 Err(CompilerError::new(
+    //                     &format!("Ang `{}` ay `maiba`", name),
+    //                     ErrorKind::Error,
+    //                     line,
+    //                     column,
+    //                 )
+    //                 .add_help("Subukan mong tanggalin ang `maiba` sa deklarasyon nito"))
+    //             }
+    //         }
+    //         // WARN: Is this really unreachable?
+    //         _ => unreachable!(),
+    //     }
+    // }
 
     fn enter_scope(&mut self) {
         self.parent_module.symbol_table.push(HashMap::new());
+        self.parent_module.type_table.push(HashMap::new());
     }
 
     fn exit_scope(&mut self) {
         let _ = self.parent_module.symbol_table.pop();
+        let _ = self.parent_module.type_table.pop();
     }
 
     pub fn has_error(&self) -> bool {

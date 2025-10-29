@@ -10,6 +10,9 @@ typedef struct Hayop {
 } Hayop;
 DEFINE_TOL_ARRAY_STRUCT(int32_t)
 DEFINE_TOL_ARRAY_STRUCT(TOL_Array_int32_t)
+void gen2__i32__Tao(int32_t a, Tao b) { b.edad; }
+int32_t generic__i32__dobletang(int32_t a, double b) { return a; }
+int32_t generic__i32__i32(int32_t a, int32_t b) { return a; }
 Tao bago(int32_t edad, uint32_t tuig) {
   return (struct Tao){.edad = edad, .tuig = tuig};
 }
@@ -37,6 +40,10 @@ void __TOL_main__() {
   for (size_t i = 0; i <= 12; i++) {
     i;
   }
+  (generic__i32__i32(5, 6));
+  (generic__i32__dobletang(12, 12.2));
+  (gen2__i32__Tao(5, tao));
+  (generic__i32__i32(1, 2));
   exit(0);
 }
 int main() {

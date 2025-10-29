@@ -17,6 +17,9 @@ pub struct Module {
     pub type_table: Vec<HashMap<String, TypeInfo>>,
     pub inferred_types: HashMap<usize, TolType>,
     pub declared_array_types: Vec<String>,
+    pub generic_function_templates: HashMap<String, Stmt>,
+    pub instantiated_functions: HashMap<String, Stmt>,
+    pub mangle_map: HashMap<usize, String>,
 }
 
 impl Module {
@@ -38,6 +41,9 @@ impl Module {
             type_table: vec![HashMap::new()],
             inferred_types: HashMap::new(),
             declared_array_types: Vec::new(),
+            generic_function_templates: HashMap::new(),
+            instantiated_functions: HashMap::new(),
+            mangle_map: HashMap::new(),
         }
     }
 }

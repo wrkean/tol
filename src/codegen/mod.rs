@@ -37,6 +37,16 @@ impl<'a> CodeGenerator<'a> {
         &self.output
     }
 
+    fn generate_function_instances(&mut self) -> String {
+        let mut out = String::new();
+        for stmt in self.parent_module.instantiated_functions.values() {
+            out.push_str(&self.gen_statement(stmt));
+            out.push('\n');
+        }
+
+        out
+    }
+
     fn gen_statements(&mut self, statements: &[Stmt]) -> String {
         let mut out = String::new();
         for stmt in statements {
@@ -47,6 +57,9 @@ impl<'a> CodeGenerator<'a> {
 
         out.push('\n');
         out.push_str(&self.declare_array_structs());
+
+        let function_instances = self.generate_function_instances();
+        out.push_str(&function_instances);
 
         for stmt in statements {
             if !matches!(stmt, Stmt::Bagay { .. }) {
@@ -263,9 +276,11 @@ impl<'a> CodeGenerator<'a> {
                     self.gen_expression(right, None)
                 )
             }
-            Expr::FnCall { callee, args, .. } => match callee.as_ref() {
-                Expr::Identifier { token, .. } => {
-                    format!("({}({}))", token.lexeme(), self.gen_args(args))
+            Expr::FnCall {
+                callee, args, id, ..
+            } => match callee.as_ref() {
+                Expr::Identifier { .. } => {
+                    format!("({}({}))", self.mangle(*id), self.gen_args(args))
                 }
                 Expr::MemberAccess { left, member, .. } => {
                     let mut out =
@@ -418,6 +433,10 @@ impl<'a> CodeGenerator<'a> {
         } else {
             unreachable!("block is not Expr::Block")
         }
+    }
+
+    fn mangle(&self, id: usize) -> String {
+        self.parent_module.mangle_map.get(&id).unwrap().clone()
     }
 
     fn get_inferred_type(&self, id: usize) -> &TolType {

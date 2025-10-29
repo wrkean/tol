@@ -48,6 +48,7 @@ pub enum TolType {
     // Special
     AkoType,
     Unknown,
+    TypeVar(String), // Used in generics
 }
 
 impl TolType {
@@ -118,7 +119,6 @@ impl TolType {
             (MutablePointer(t1), MutablePointer(t2)) => {
                 t1.is_assignment_compatible(t2, line, column)
             }
-
             _ => err(format!(
                 "Ang tipong `{}` ay hindi bagay sa tipong `{}`",
                 self, other
@@ -186,6 +186,7 @@ impl fmt::Display for TolType {
             TolType::Array(t, _) => write!(f, "[{}]", t),
             TolType::Pointer(inner) => write!(f, "Ptr[{}]", inner),
             TolType::MutablePointer(inner) => write!(f, "MaibaPtr[{}]", inner),
+            TolType::TypeVar(s) => write!(f, "TypeVar[{}]", s),
             _ => write!(f, "<hindi_tipo>"),
         }
     }

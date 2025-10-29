@@ -27,6 +27,14 @@ itupad i32 {
     }
 }
 
+paraan generic<T, U>(a: T, b: V) T {
+    ibalik a
+}
+
+paraan gen2<T>(a: T, b: Tao) {
+    b.edad
+}
+
 paraan una() {
     ang tao = Tao::bago(8, 10)
     ang edad = tao.edad
@@ -47,6 +55,11 @@ paraan una() {
     sa 0..=12 => i {
         i;
     }
+
+    generic(5, 6)
+    generic(12, 12.2)
+    gen2(5, tao)
+    generic(1, 2)
 
     // ang hello = b"Hello world"
 

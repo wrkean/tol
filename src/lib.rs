@@ -63,6 +63,7 @@ fn compile_c(c_code: &str) -> io::Result<()> {
 
     let status = Command::new("gcc")
         .args([
+            "-w", // Supress english warnings
             filename.to_str().unwrap(),
             "-o",
             output_binary.to_str().unwrap(),
